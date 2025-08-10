@@ -1,0 +1,28 @@
+{
+  "707959058228969485": [
+    {
+      "embedData": {
+        "title": "Oi",
+        "description": "oi",
+        "color": "#3498DB",
+        "image": "https://cdn.discordapp.com/attachments/1403191360244420699/1403203503861534720/RUSSIA.png?ex=6896b299&is=68956119&hm=6c33d3feb715ae922756af04013fa2ea48e9949413ddffc36dbac18989ac56d5&",
+        "footerText": "Rússia",
+        "guildId": "1402835801741590710"
+      },
+      "channelId": "1403191360244420699",
+      "messageId": "1403203654659473549"
+    },
+    {
+      "embedData": {
+        "title": "o",
+        "description": "<@&1382726991433695374> teste",
+        "color": "#3498DB",
+        "image": null,
+        "footerText": "o",
+        "guildId": "1354890930746036516"
+      },
+      "channelId": "1404163287490236417",
+      "messageId": "1404183663880441956"
+    }
+  ]
+}

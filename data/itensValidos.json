@@ -1,0 +1,129 @@
+{
+  "armas": [
+    {
+      "name": "ak 47",
+      "aliases": [
+        "ak",
+        "ak-47",
+        "ak47"
+      ]
+    },
+    {
+      "name": "five seven",
+      "aliases": [
+        "five-seven",
+        "five",
+        "pistola"
+      ]
+    },
+    {
+      "name": "uzi",
+      "aliases": [
+        "usi"
+      ]
+    }
+  ],
+  "materiais": [
+    {
+      "name": "munição 762",
+      "aliases": [
+        "municao de 762",
+        "munição 762",
+        "muni 762",
+        "municao de 762",
+        "muni de 762",
+        "munição de 762"
+      ]
+    },
+    {
+      "name": "munição 380",
+      "aliases": [
+        "municao de 380",
+        "munição 380",
+        "muni 380",
+        "municao de 380",
+        "muni de 380",
+        "munição de 380"
+      ]
+    },
+    {
+      "name": "ferro",
+      "aliases": [
+        "lingote de ferro",
+        "ferros",
+        "lingote ferros"
+      ]
+    },
+    {
+      "name": "colete",
+      "aliases": [
+        "coletes"
+      ]
+    },
+    {
+      "name": "kit de reparo",
+      "aliases": [
+        "kit reparo",
+        "kit de reparo"
+      ]
+    }
+  ],
+  "itens": [
+    {
+      "name": "celular",
+      "aliases": [
+        "cell",
+        "cel"
+      ]
+    },
+    {
+      "name": "capuz",
+      "aliases": [
+        "capus"
+      ]
+    },
+    {
+      "name": "chave amarela",
+      "aliases": [
+        "chave amarela (lojinha)"
+      ]
+    },
+    {
+      "name": "chave verde",
+      "aliases": []
+    },
+    {
+      "name": "ticket corrida",
+      "aliases": []
+    }
+  ],
+  "comida": [
+    {
+      "name": "balde de frango",
+      "aliases": [
+        "frango",
+        "baldes de frango",
+        "baude de frango",
+        "baude frango"
+      ]
+    },
+    {
+      "name": "refrigerante",
+      "aliases": [
+        "refri"
+      ]
+    },
+    {
+      "name": "soda",
+      "aliases": [
+        "sodas"
+      ]
+    },
+    {
+      "name": "batata frita",
+      "aliases": [
+        "batatinhas fritas"
+      ]
+    }
+  ]
+}
