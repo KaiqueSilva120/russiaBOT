@@ -385,7 +385,7 @@ function setup(client) {
             {
                 if (interaction.customId.startsWith('ticket_modal_')) {
                     // A CORREÇÃO FOI FEITA AQUI: Adicionado deferReply para evitar o erro `InteractionNotReplied`
-                    await interaction.deferReply({ ephemeral: true });
+                    await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
 
                     const ticketType = interaction.customId.replace('ticket_modal_', '');
                     const reason = interaction.fields.getTextInputValue('ticket_reason');
@@ -449,27 +449,27 @@ function setup(client) {
                             components: [buttonsRow]
                         });
 
-                        await interaction.followUp({ content: `Seu ticket foi aberto em ${ticketChannel}!`, ephemeral: true });
+                        await interaction.followUp({ content: `Seu ticket foi aberto em ${ticketChannel}!`, flags: InteractionResponseFlags.Ephemeral });
 
                     } catch (error) {
                         console.error('[SISTEMA DE TICKETS] Erro ao abrir o ticket:', error);
                         // Se o deferReply já foi feito, use followUp para o erro
-                        await interaction.followUp({ content: 'Ocorreu um erro ao abrir seu ticket. Tente novamente mais tarde.', ephemeral: true });
+                        await interaction.followUp({ content: 'Ocorreu um erro ao abrir seu ticket. Tente novamente mais tarde.', flags: InteractionResponseFlags.Ephemeral });
                     }
                 } else if (interaction.customId === 'close_ticket_reason_modal') {
                     await interaction.deferUpdate();
                     const closeReason = interaction.fields.getTextInputValue('close_reason_input');
                     const ticketInfo = tickets[interaction.channel.id];
                     if (!ticketInfo) {
-                        return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
+                        return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', flags: InteractionResponseFlags.Ephemeral });
                     }
                     await closeTicket(interaction.channel, ticketInfo, interaction.member, closeReason, client);
                 } else if (interaction.customId === 'add_member_modal') {
                     await interaction.deferUpdate();
                     const ticketInfo = tickets[interaction.channel.id];
-                    if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
+                    if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', flags: InteractionResponseFlags.Ephemeral });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
-                        return interaction.followUp({ content: 'Apenas a equipe pode adicionar membros.', ephemeral: true });
+                        return interaction.followUp({ content: 'Apenas a equipe pode adicionar membros.', flags: InteractionResponseFlags.Ephemeral });
                     }
 
                     const memberIdentifier = interaction.fields.getTextInputValue('member_id_input');
@@ -489,7 +489,7 @@ function setup(client) {
                     if (targetMember) {
                         const currentPermissions = interaction.channel.permissionOverwrites.cache.get(targetMember.id);
                         if (currentPermissions && currentPermissions.allow.has(PermissionsBitField.Flags.ViewChannel)) {
-                            return interaction.followUp({ content: `<:alerta:1398025586675122170> | O membro <@${targetMember.id}> já possui acesso a este ticket.`, ephemeral: true });
+                            return interaction.followUp({ content: `<:alerta:1398025586675122170> | O membro <@${targetMember.id}> já possui acesso a este ticket.`, flags: InteractionResponseFlags.Ephemeral });
                         }
 
                         await interaction.channel.permissionOverwrites.edit(targetMember.id, {
@@ -501,14 +501,14 @@ function setup(client) {
                             ephemeral: false
                         });
                     } else {
-                        await interaction.followUp({ content: 'Não foi possível encontrar o membro especificado. Por favor, use a menção (@membro) ou o ID do membro.', ephemeral: true });
+                        await interaction.followUp({ content: 'Não foi possível encontrar o membro especificado. Por favor, use a menção (@membro) ou o ID do membro.', flags: InteractionResponseFlags.Ephemeral });
                     }
                 } else if (interaction.customId === 'remove_member_modal') {
                     await interaction.deferUpdate();
                     const ticketInfo = tickets[interaction.channel.id];
-                    if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
+                    if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', flags: InteractionResponseFlags.Ephemeral });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
-                        return interaction.followUp({ content: 'Apenas a equipe pode remover membros.', ephemeral: true });
+                        return interaction.followUp({ content: 'Apenas a equipe pode remover membros.', flags: InteractionResponseFlags.Ephemeral });
                     }
 
                     const memberIdentifier = interaction.fields.getTextInputValue('remove_member_id_input');
@@ -527,12 +527,12 @@ function setup(client) {
 
                     if (targetMember) {
                         if (targetMember.id === ticketInfo.ownerId) {
-                            return interaction.followUp({ content: 'Você não pode remover o criador do ticket.', ephemeral: true });
+                            return interaction.followUp({ content: 'Você não pode remover o criador do ticket.', flags: InteractionResponseFlags.Ephemeral });
                         }
 
                         const currentPermissions = interaction.channel.permissionOverwrites.cache.get(targetMember.id);
                         if (!currentPermissions || !currentPermissions.allow.has(PermissionsBitField.Flags.ViewChannel)) {
-                            return interaction.followUp({ content: `<:alerta:1398025586675122170> | O membro <@${targetMember.id}> já não possui acesso a este ticket.`, ephemeral: true });
+                            return interaction.followUp({ content: `<:alerta:1398025586675122170> | O membro <@${targetMember.id}> já não possui acesso a este ticket.`, flags: InteractionResponseFlags.Ephemeral });
                         }
 
                         await interaction.channel.permissionOverwrites.delete(targetMember.id);
@@ -541,7 +541,7 @@ function setup(client) {
                             ephemeral: false
                         });
                     } else {
-                        await interaction.followUp({ content: '<:dawae:1369630173376282634> Não foi possível encontrar o membro especificado. Por favor, use a menção (@membro) ou o ID do membro.', ephemeral: true });
+                        await interaction.followUp({ content: '<:dawae:1369630173376282634> Não foi possível encontrar o membro especificado. Por favor, use a menção (@membro) ou o ID do membro.', flags: InteractionResponseFlags.Ephemeral });
                     }
                 }
                 return;
@@ -554,7 +554,7 @@ function setup(client) {
 
             if (!ticketInfo) {
                 if (!interaction.replied && !interaction.deferred) {
-                    return interaction.reply({ content: 'Este não é um canal de ticket válido ou o ticket já foi fechado.', ephemeral: true }).catch(e => console.error("Erro ao responder botão de ticket inválido:", e));
+                    return interaction.reply({ content: 'Este não é um canal de ticket válido ou o ticket já foi fechado.', flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao responder botão de ticket inválido:", e));
                 }
                 return;
             }
@@ -563,13 +563,13 @@ function setup(client) {
 
             switch (customId) {
                 case 'fechar_ticket':
-                    await interaction.deferReply({ ephemeral: true }).catch(e => console.error("Erro ao deferir fechar_ticket:", e));
+                    await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao deferir fechar_ticket:", e));
                     await closeTicket(channel, ticketInfo, member, null, client);
                     break;
 
                 case 'fechar_ticket_motivo':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode usar este botão.', ephemeral: true }).catch(e => console.error("Erro ao responder botão fechar_ticket_motivo:", e));
+                        return interaction.reply({ content: 'Apenas a equipe pode usar este botão.', flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao responder botão fechar_ticket_motivo:", e));
                     }
                     const closeReasonModal = new ModalBuilder()
                         .setCustomId('close_ticket_reason_modal')
@@ -587,7 +587,7 @@ function setup(client) {
 
                 case 'gerenciar_ticket':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode gerenciar tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder botão gerenciar_ticket:", e));
+                        return interaction.reply({ content: 'Apenas a equipe pode gerenciar tickets.', flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao responder botão gerenciar_ticket:", e));
                     }
                     const manageEmbed = new EmbedBuilder()
                         .setTitle('<:ticket:1403190480480764008> Gerencie o ticket com as opções abaixo:');
@@ -607,7 +607,7 @@ function setup(client) {
                     await interaction.reply({
                         embeds: [manageEmbed],
                         components: [manageButtonsRow1, manageButtonsRow2],
-                        ephemeral: true
+                        flags: InteractionResponseFlags.Ephemeral
                     }).catch(e => console.error("Erro ao responder gerenciar_ticket:", e));
                     break;
 
@@ -631,7 +631,7 @@ function setup(client) {
 
                 case 'adicionar_membro':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode adicionar membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão adicionar_membro:", e));
+                        return interaction.reply({ content: 'Apenas a equipe pode adicionar membros.', flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao responder botão adicionar_membro:", e));
                     }
                     const addMemberModal = new ModalBuilder()
                         .setCustomId('add_member_modal')
@@ -649,7 +649,7 @@ function setup(client) {
 
                 case 'remover_membro':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode remover membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão remover_membro:", e));
+                        return interaction.reply({ content: 'Apenas a equipe pode remover membros.', flags: InteractionResponseFlags.Ephemeral }).catch(e => console.error("Erro ao responder botão remover_membro:", e));
                     }
                     const removeMemberModal = new ModalBuilder()
                         .setCustomId('remove_member_modal')

@@ -94,7 +94,7 @@ module.exports = (client) => {
         await interaction.reply({
             content: '<:pureza_i:1391511885123420371> Gerenciamento de Embeds',
             components: [buttonsRow],
-            ephemeral: true,
+            flags: InteractionResponseFlags.Ephemeral,
         });
       },
     },
@@ -126,13 +126,13 @@ module.exports = (client) => {
             await interaction.channel.send(payload);
             await interaction.reply({
                 content: '<:Positivo:1403203942573150362> Mensagem enviada com sucesso!',
-                ephemeral: true,
+                flags: InteractionResponseFlags.Ephemeral,
             });
         } catch (error) {
             console.error('Erro ao enviar mensagem com o comando /say:', error);
             await interaction.reply({
                 content: '<:Negativo:1403204560058585138> Houve um erro ao tentar enviar a mensagem. Chama o exorcista q é demonio.',
-                ephemeral: true,
+                flags: InteractionResponseFlags.Ephemeral,
             });
         }
       },
@@ -215,7 +215,7 @@ module.exports = (client) => {
           await interaction.update({
             content: '<:Negativo:1403204560058585138> Você não tem embeds enviadas para excluir.',
             components: [],
-            ephemeral: true,
+            flags: InteractionResponseFlags.Ephemeral,
           });
           return;
         }
@@ -235,7 +235,7 @@ module.exports = (client) => {
         await interaction.update({
           content: '⚠️ Qual embed deseja apagar?',
           components: [row],
-          ephemeral: true,
+          flags: InteractionResponseFlags.Ephemeral,
         });
         return;
       }
@@ -248,7 +248,7 @@ module.exports = (client) => {
           await interaction.update({
             content: '❌ Você não tem embeds para editar.',
             components: [],
-            ephemeral: true,
+            flags: InteractionResponseFlags.Ephemeral,
           });
           return;
         }
@@ -268,7 +268,7 @@ module.exports = (client) => {
         await interaction.update({
           content: '⚠️ Qual embed deseja editar?',
           components: [row],
-          ephemeral: true,
+          flags: InteractionResponseFlags.Ephemeral,
         });
         return;
       }
@@ -281,7 +281,7 @@ module.exports = (client) => {
       const embeds = client.embedMessages.get(userId) || [];
 
       if (index < 0 || index >= embeds.length) {
-        await interaction.reply({ content: '<:Negativo:1403204560058585138> Seleção inválida.', ephemeral: true });
+        await interaction.reply({ content: '<:Negativo:1403204560058585138> Seleção inválida.', flags: InteractionResponseFlags.Ephemeral });
         return;
       }
 
@@ -305,7 +305,7 @@ module.exports = (client) => {
       client.embedMessages.set(userId, embeds);
       saveData(client.embedMessages);
 
-      await interaction.update({ content: '<:Positivo:1403203942573150362> Embed apagada com sucesso!', components: [], ephemeral: true });
+      await interaction.update({ content: '<:Positivo:1403203942573150362> Embed apagada com sucesso!', components: [], flags: InteractionResponseFlags.Ephemeral });
       return;
     }
 
@@ -315,7 +315,7 @@ module.exports = (client) => {
       const embeds = client.embedMessages.get(userId) || [];
 
       if (index < 0 || index >= embeds.length) {
-        await interaction.reply({ content: '<:Negativo:1403204560058585138> Seleção inválida.', ephemeral: true });
+        await interaction.reply({ content: '<:Negativo:1403204560058585138> Seleção inválida.', flags: InteractionResponseFlags.Ephemeral });
         return;
       }
 
@@ -381,7 +381,7 @@ module.exports = (client) => {
     const isCreateModal = interaction.customId === 'setupembed_createEmbedModal';
 
     if (isCreateModal) {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
 
       const title = interaction.fields.getTextInputValue('embedTitle');
       const description = interaction.fields.getTextInputValue('embedDesc');
@@ -416,7 +416,7 @@ module.exports = (client) => {
         await m.delete();
 
         if (!channel || !channel.isTextBased() || !embedData) {
-          await interaction.followUp({ content: '<:Negativo:1403204560058585138> Canal inválido, ou dados da embed não encontrados. Tente novamente.', ephemeral: true });
+          await interaction.followUp({ content: '<:Negativo:1403204560058585138> Canal inválido, ou dados da embed não encontrados. Tente novamente.', flags: InteractionResponseFlags.Ephemeral });
           client.tempEmbedData.delete(userId);
           return;
         }
@@ -450,11 +450,11 @@ module.exports = (client) => {
           await channel.send(`<:Positivo:1403203942573150362> A embed foi criada por ${interaction.user.tag} e enviada com sucesso para este canal!`);
           
           // E uma mensagem efêmera para o usuário.
-          await interaction.followUp({ content: '<:Positivo:1403203942573150362> Embed enviada com sucesso! A confirmação pública já foi enviada no canal.', ephemeral: true });
+          await interaction.followUp({ content: '<:Positivo:1403203942573150362> Embed enviada com sucesso! A confirmação pública já foi enviada no canal.', flags: InteractionResponseFlags.Ephemeral });
 
         } catch (error) {
           console.error('Erro ao enviar a embed para o canal ou salvar:', error);
-          await interaction.followUp({ content: '<:Negativo:1403204560058585138> Houve um erro ao tentar enviar a embed para o canal. Verifique as permissões do bot.', ephemeral: true });
+          await interaction.followUp({ content: '<:Negativo:1403204560058585138> Houve um erro ao tentar enviar a embed para o canal. Verifique as permissões do bot.', flags: InteractionResponseFlags.Ephemeral });
         } finally {
           client.tempEmbedData.delete(userId);
           collector.stop();
@@ -463,7 +463,7 @@ module.exports = (client) => {
 
       collector.on('end', collected => {
         if (collected.size === 0 && client.tempEmbedData.has(userId)) {
-          interaction.followUp({ content: '<a:relogio:1403118839557918770> Tempo esgotado! Você não mencionou um canal. A criação da embed foi cancelada.', ephemeral: true });
+          interaction.followUp({ content: '<a:relogio:1403118839557918770> Tempo esgotado! Você não mencionou um canal. A criação da embed foi cancelada.', flags: InteractionResponseFlags.Ephemeral });
           client.tempEmbedData.delete(userId);
         }
       });
@@ -477,7 +477,7 @@ module.exports = (client) => {
       
       const embeds = client.embedMessages.get(userId) || [];
       if (index < 0 || index >= embeds.length) {
-        await interaction.reply({ content: '❌ Índice inválido para edição.', ephemeral: true });
+        await interaction.reply({ content: '❌ Índice inválido para edição.', flags: InteractionResponseFlags.Ephemeral });
         return;
       }
 
@@ -522,7 +522,7 @@ module.exports = (client) => {
         console.warn('Erro ao tentar editar mensagem no Discord (pode já ter sido excluída):', e.message);
       }
 
-      await interaction.reply({ content: '<:Positivo:1403203942573150362> Embed editada com sucesso!', ephemeral: true });
+      await interaction.reply({ content: '<:Positivo:1403203942573150362> Embed editada com sucesso!', flags: InteractionResponseFlags.Ephemeral });
       return;
     }
   }

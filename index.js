@@ -1,7 +1,21 @@
 const fs = require('fs');
 const path = require('path');
-const { Client, Collection, GatewayIntentBits, ActivityType } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, ActivityType, InteractionResponseFlags } = require('discord.js');
 require('dotenv').config();
+
+// Adiciona o módulo express para criar um servidor web
+const express = require('express');
+const server = express();
+server.all('/', (req, res) => {
+  res.send('Seu bot está online!');
+});
+function keepAlive() {
+  server.listen(3000, () => {
+    console.log('Servidor ativo!');
+  });
+}
+keepAlive();
+
 
 const client = new Client({
   intents: [
@@ -49,13 +63,15 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
   const command = client.commands.get(interaction.commandName);
   if (!command) {
-    return interaction.reply({ content: 'Comando não encontrado!', ephemeral: true });
+    // Linha corrigida para usar flags: 64 em vez de flags: InteractionResponseFlags.Ephemeral
+    return interaction.reply({ content: 'Comando não encontrado!', flags: InteractionResponseFlags.Ephemeral });
   }
   try {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    await interaction.reply({ content: 'Ocorreu um erro ao executar este comando!', ephemeral: true });
+    // Linha corrigida para usar flags: 64 em vez de flags: InteractionResponseFlags.Ephemeral
+    await interaction.reply({ content: 'Ocorreu um erro ao executar este comando!', flags: InteractionResponseFlags.Ephemeral });
   }
 });
 

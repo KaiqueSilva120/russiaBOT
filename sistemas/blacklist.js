@@ -162,11 +162,11 @@ module.exports = (client) => {
         // Manipulador para botões de blacklist
         if (interaction.isButton() && ['blacklist_add', 'blacklist_remove'].includes(interaction.customId)) {
             // **MUDANÇA AQUI:** A primeira coisa que o bot faz é adiar a resposta.
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
 
             if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
                 // **MUDANÇA AQUI:** Usando editReply após o deferReply
-                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, ephemeral: true });
+                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, flags: InteractionResponseFlags.Ephemeral });
             }
 
             if (interaction.customId === 'blacklist_add') {
@@ -206,7 +206,7 @@ module.exports = (client) => {
                 const currentBlacklist = loadBlacklist();
                 if (currentBlacklist.length === 0) {
                     // **MUDANÇA AQUI:** Usando editReply
-                    return interaction.editReply({ content: 'A blacklist está vazia. Não há membros para remover.', ephemeral: true });
+                    return interaction.editReply({ content: 'A blacklist está vazia. Não há membros para remover.', flags: InteractionResponseFlags.Ephemeral });
                 }
 
                 const selectMenu = new StringSelectMenuBuilder()
@@ -225,7 +225,7 @@ module.exports = (client) => {
                 await interaction.editReply({
                     content: 'Selecione o membro que deseja remover da blacklist:',
                     components: [row],
-                    ephemeral: true,
+                    flags: InteractionResponseFlags.Ephemeral,
                 });
             }
         }
@@ -233,11 +233,11 @@ module.exports = (client) => {
         // Manipulador para o modal de adicionar blacklist
         if (interaction.isModalSubmit() && interaction.customId === 'blacklist_add_modal') {
              // **MUDANÇA AQUI:** Adicionando deferReply no início do manipulador do modal
-             await interaction.deferReply({ ephemeral: true });
+             await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
             
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
                 // **MUDANÇA AQUI:** Usando editReply
-                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, ephemeral: true });
+                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, flags: InteractionResponseFlags.Ephemeral });
             }
 
             const name = interaction.fields.getTextInputValue('blacklist_name');
@@ -246,19 +246,19 @@ module.exports = (client) => {
 
             if (!/^\d+$/.test(id)) {
                 // **MUDANÇA AQUI:** Usando editReply
-                return interaction.editReply({ content: '<:Negativo:1403204560058585138> O ID do membro deve ser um número válido.', ephemeral: true });
+                return interaction.editReply({ content: '<:Negativo:1403204560058585138> O ID do membro deve ser um número válido.', flags: InteractionResponseFlags.Ephemeral });
             }
 
             let currentBlacklist = loadBlacklist();
             if (currentBlacklist.some(member => member.id === id)) {
                 // **MUDANÇA AQUI:** Usando editReply
-                return interaction.editReply({ content: `<:Negativo:1403204560058585138> O membro com ID \`${id}\` já está na blacklist.`, ephemeral: true });
+                return interaction.editReply({ content: `<:Negativo:1403204560058585138> O membro com ID \`${id}\` já está na blacklist.`, flags: InteractionResponseFlags.Ephemeral });
             }
 
             currentBlacklist.push({ name, id, reason });
             saveBlacklist(currentBlacklist);
             // **MUDANÇA AQUI:** Usando editReply
-            await interaction.editReply({ content: `<:Positivo:1403203942573150362> Membro **${name}** (ID: \`${id}\`) adicionado à blacklist.`, ephemeral: true });
+            await interaction.editReply({ content: `<:Positivo:1403203942573150362> Membro **${name}** (ID: \`${id}\`) adicionado à blacklist.`, flags: InteractionResponseFlags.Ephemeral });
 
             await maintainBlacklistMessage(client, true);
         }
@@ -266,11 +266,11 @@ module.exports = (client) => {
         // Manipulador para o menu de seleção de remoção
         if (interaction.isStringSelectMenu() && interaction.customId === 'blacklist_remove_select') {
              // **MUDANÇA AQUI:** Adicionando deferReply no início do manipulador do menu
-             await interaction.deferReply({ ephemeral: true });
+             await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
 
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
                 // **MUDANÇA AQUI:** Usando editReply
-                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, ephemeral: true });
+                return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.`, flags: InteractionResponseFlags.Ephemeral });
             }
             
             const memberIdToRemove = interaction.values[0];
@@ -282,12 +282,12 @@ module.exports = (client) => {
             if (currentBlacklist.length < initialLength) {
                 saveBlacklist(currentBlacklist);
                 // **MUDANÇA AQUI:** `update` foi substituído por `editReply` para manter o padrão
-                await interaction.editReply({ content: `<:Positivo:1403203942573150362> Membro com ID \`${memberIdToRemove}\` removido da blacklist.`, components: [], ephemeral: true });
+                await interaction.editReply({ content: `<:Positivo:1403203942573150362> Membro com ID \`${memberIdToRemove}\` removido da blacklist.`, components: [], flags: InteractionResponseFlags.Ephemeral });
 
                 await maintainBlacklistMessage(client, true);
             } else {
                 // **MUDANÇA AQUI:** `update` foi substituído por `editReply`
-                await interaction.editReply({ content: '<:Negativo:1403204560058585138> Membro não encontrado na blacklist.', components: [], ephemeral: true });
+                await interaction.editReply({ content: '<:Negativo:1403204560058585138> Membro não encontrado na blacklist.', components: [], flags: InteractionResponseFlags.Ephemeral });
             }
         }
     });

@@ -254,7 +254,7 @@ function setup(client) {
             const member = interaction.member;
             
             if (!member.roles.cache.has(configIDs.REGISTRO_PENDENTE_ROLE_ID)) {
-                return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', ephemeral: true });
+                return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', flags: InteractionResponseFlags.Ephemeral });
             }
 
             const modal = new ModalBuilder()
@@ -300,7 +300,7 @@ function setup(client) {
         }
 
         if (interaction.isModalSubmit() && interaction.customId === 'registro_modal') {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
             const member = interaction.member;
             const guild = interaction.guild;
 
@@ -349,11 +349,11 @@ function setup(client) {
             const isAprovar = interaction.customId.startsWith('aprovar_');
 
             if (!registro) {
-                return interaction.reply({ content: 'Este registro não existe ou já foi processado.', ephemeral: true });
+                return interaction.reply({ content: 'Este registro não existe ou já foi processado.', flags: InteractionResponseFlags.Ephemeral });
             }
 
             if (!interaction.member.roles.cache.has(configIDs.RESPONSAVEL_REGISTRO_ROLE_ID)) {
-                return interaction.reply({ content: 'Você não tem permissão para aprovar ou negar registros.', ephemeral: true });
+                return interaction.reply({ content: 'Você não tem permissão para aprovar ou negar registros.', flags: InteractionResponseFlags.Ephemeral });
             }
 
             if (isAprovar) {
@@ -448,7 +448,7 @@ function setup(client) {
         }
         
         if (interaction.isModalSubmit() && interaction.customId.startsWith('negar_modal_')) {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
             const userId = interaction.customId.split('_')[2];
             const registro = registrosPendentes[userId];
             const motivo = interaction.fields.getTextInputValue('motivo');
