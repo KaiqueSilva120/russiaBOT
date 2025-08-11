@@ -1,101 +1,51 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, ChannelType } = require('discord.js');
 const fs = require('fs').promises;
 const path = require('path');
+const connectToDatabase = require('../database');
+const RegistroPendente = require('../models/RegistroPendente'); // Caminho atualizado
+const Membro = require('../models/Membro'); // Caminho atualizado
 
 const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
-const REGISTRO_FILE = path.join(BANCO_DIR, 'registro.json');
 const REGISTRO_ID_FILE = path.join(BANCO_DIR, 'registroID.json');
-const MEMBROS_DB_FILE = path.join(BANCO_DIR, 'membrosDB.json');
 
-let registrosPendentes = {};
 let configIDs = {};
-let membrosDB = {};
 
 /**
- * Carrega os arquivos JSON de configuração e registros.
+ * Carrega o arquivo JSON de configuração.
  */
-async function loadFiles() {
+async function loadConfig() {
     try {
         await fs.mkdir(BANCO_DIR, { recursive: true });
         
-        // Carrega registroID.json
         if (await fs.access(REGISTRO_ID_FILE).then(() => true).catch(() => false)) {
             const configData = await fs.readFile(REGISTRO_ID_FILE, 'utf8');
             configIDs = JSON.parse(configData);
+            console.log('[REGISTRO] Configurações carregadas com sucesso do registroID.json.');
+            return true;
         } else {
-            console.error('[REGISTRO] Arquivo registroID.json não encontrado. Certifique-se de que ele existe na pasta "banco".');
+            console.error('[REGISTRO] Arquivo registroID.json não encontrado. O sistema não pode ser iniciado.');
             return false;
         }
-
-        // Carrega registro.json
-        if (await fs.access(REGISTRO_FILE).then(() => true).catch(() => false)) {
-            const registroData = await fs.readFile(REGISTRO_FILE, 'utf8');
-            registrosPendentes = JSON.parse(registroData);
-        } else {
-            await fs.writeFile(REGISTRO_FILE, JSON.stringify({}), 'utf8');
-        }
-        
-        // Carrega membrosDB.json
-        if (await fs.access(MEMBROS_DB_FILE).then(() => true).catch(() => false)) {
-            const membrosData = await fs.readFile(MEMBROS_DB_FILE, 'utf8');
-            membrosDB = JSON.parse(membrosData);
-        } else {
-            await fs.writeFile(MEMBROS_DB_FILE, JSON.stringify({}), 'utf8');
-        }
-        
-        return true;
     } catch (error) {
-        console.error('[REGISTRO] Erro ao carregar arquivos JSON:', error);
+        console.error('[REGISTRO] Erro ao carregar o arquivo registroID.json:', error);
         return false;
     }
 }
 
 /**
- * Salva os registros pendentes no arquivo JSON.
+ * Limpa os registros de membros mais antigos que 7 dias do banco de dados.
  */
-async function saveRegistros() {
-    try {
-        await fs.writeFile(REGISTRO_FILE, JSON.stringify(registrosPendentes, null, 2), 'utf8');
-    } catch (error) {
-        console.error('[REGISTRO] Erro ao salvar registros:', error);
-    }
-}
-
-/**
- * Salva o banco de dados de membros.
- */
-async function saveMembrosDB() {
-    try {
-        await fs.writeFile(MEMBROS_DB_FILE, JSON.stringify(membrosDB, null, 2), 'utf8');
-    } catch (error) {
-        console.error('[REGISTRO] Erro ao salvar banco de membros:', error);
-    }
-}
-
 async function clearOldRecords() {
-    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    let recordsRemoved = false;
-
-    for (const userId in membrosDB) {
-        if (membrosDB[userId] && Array.isArray(membrosDB[userId])) {
-            const initialLength = membrosDB[userId].length;
-            membrosDB[userId] = membrosDB[userId].filter(record => {
-                const recordDate = new Date(record.dataRegistro).getTime();
-                return recordDate > sevenDaysAgo;
-            });
-            // Se o array de registros ficar vazio, remove a chave do usuário
-            if (membrosDB[userId].length < initialLength) {
-                recordsRemoved = true;
-            }
-            if (membrosDB[userId].length === 0) {
-                delete membrosDB[userId];
-            }
+    try {
+        const sevenDaysAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+        const result = await Membro.deleteMany({
+            dataRegistro: { $lt: sevenDaysAgo }
+        });
+        if (result.deletedCount > 0) {
+            console.log(`[REGISTRO] ${result.deletedCount} registros de membros antigos foram removidos.`);
         }
-    }
-
-    if (recordsRemoved) {
-        await saveMembrosDB();
-        console.log('[REGISTRO] Registros antigos (mais de 7 dias) foram removidos do banco de dados de membros.');
+    } catch (error) {
+        console.error('[REGISTRO] Erro ao limpar registros antigos:', error);
     }
 }
 
@@ -147,9 +97,7 @@ async function setupPanel(client) {
 
 /**
  * Cria a embed de registro pendente.
- * @param {object} registro - Objeto com os dados do registro.
- * @param {GuildMember} member - O membro que fez o registro.
- * @returns {EmbedBuilder} A embed de registro.
+ * ... (código da função createPendingEmbed sem alterações)
  */
 function createPendingEmbed(registro, member) {
     const embed = new EmbedBuilder()
@@ -165,17 +113,12 @@ function createPendingEmbed(registro, member) {
         )
         .setTimestamp()
         .setFooter({ text: 'STATUS DO REGISTRO: PENDENTE' });
-
     return embed;
 }
 
 /**
  * Cria a embed de registro aprovado.
- * @param {object} registro - Objeto com os dados do registro.
- * @param {GuildMember} member - O membro aprovado.
- * @param {Role} cargo - O cargo atribuído.
- * @param {User} staff - O staff que aprovou.
- * @returns {EmbedBuilder} A embed de registro aprovado.
+ * ... (código da função createApprovedEmbed sem alterações)
  */
 function createApprovedEmbed(registro, member, cargo, staff) {
     const embed = new EmbedBuilder()
@@ -193,17 +136,12 @@ function createApprovedEmbed(registro, member, cargo, staff) {
         )
         .setTimestamp()
         .setFooter({ text: 'STATUS DO REGISTRO: ACEITO' });
-        
     return embed;
 }
 
 /**
  * Cria a embed de registro negado.
- * @param {object} registro - Objeto com os dados do registro.
- * @param {GuildMember} member - O membro que teve o registro negado.
- * @param {string} motivo - O motivo da negação.
- * @param {User} staff - O staff que negou.
- * @returns {EmbedBuilder} A embed de registro negado.
+ * ... (código da função createDeniedEmbed sem alterações)
  */
 function createDeniedEmbed(registro, member, motivo, staff) {
     const embed = new EmbedBuilder()
@@ -221,7 +159,6 @@ function createDeniedEmbed(registro, member, motivo, staff) {
         )
         .setTimestamp()
         .setFooter({ text: 'STATUS DO REGISTRO: NEGADO' });
-        
     return embed;
 }
 
@@ -231,10 +168,13 @@ function createDeniedEmbed(registro, member, motivo, staff) {
  */
 function setup(client) {
     client.once('ready', async () => {
-        const loaded = await loadFiles();
-        if (loaded) {
-            await setupPanel(client);
-            await clearOldRecords();
+        const configLoaded = await loadConfig();
+        if (configLoaded) {
+            const isConnected = await connectToDatabase();
+            if (isConnected) {
+                await setupPanel(client);
+                await clearOldRecords();
+            }
         }
     });
 
@@ -254,7 +194,7 @@ function setup(client) {
             const member = interaction.member;
             
             if (!member.roles.cache.has(configIDs.REGISTRO_PENDENTE_ROLE_ID)) {
-                return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', ephemeral: true });
+                return interaction.reply({ content: `Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.`, ephemeral: true });
             }
 
             const modal = new ModalBuilder()
@@ -322,6 +262,16 @@ function setup(client) {
                 return interaction.editReply('Não foi possível encontrar o canal de registros pendentes.');
             }
 
+            try {
+                const existingRegistro = await RegistroPendente.findOne({ userId: member.id });
+                if (existingRegistro) {
+                    return interaction.editReply('Você já tem um registro pendente. Aguarde a aprovação.');
+                }
+            } catch (err) {
+                console.error('Erro ao verificar registro pendente:', err);
+                return interaction.editReply('Ocorreu um erro ao verificar seu registro.');
+            }
+
             const registroData = { nomeSobrenome, rg, telefone, recrutador, userId: member.id };
             const embed = createPendingEmbed(registroData, member);
 
@@ -337,22 +287,25 @@ function setup(client) {
                 components: [buttonsRow]
             });
 
-            registrosPendentes[member.id] = { ...registroData, messageId: message.id };
-            await saveRegistros();
+            await RegistroPendente.create({
+                ...registroData,
+                messageId: message.id
+            });
 
             await interaction.editReply({ content: `<a:info:1402749673076166810> Olá <@${member.id}>, seu registro foi enviado para Análise.` });
         }
 
         if (interaction.isButton() && (interaction.customId.startsWith('aprovar_') || interaction.customId.startsWith('negar_'))) {
             const userId = interaction.customId.split('_')[1];
-            const registro = registrosPendentes[userId];
             const isAprovar = interaction.customId.startsWith('aprovar_');
+
+            const registro = await RegistroPendente.findOne({ userId });
 
             if (!registro) {
                 return interaction.reply({ content: 'Este registro não existe ou já foi processado.', ephemeral: true });
             }
 
-            if (!interaction.member.roles.cache.has(configIDs.RESPONSAVEL_REGISTRO_ROLE_ID)) {
+            if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator) && !interaction.member.roles.cache.has(configIDs.RESPONSAVEL_REGISTRO_ROLE_ID)) {
                 return interaction.reply({ content: 'Você não tem permissão para aprovar ou negar registros.', ephemeral: true });
             }
 
@@ -391,7 +344,7 @@ function setup(client) {
 
             const userId = interaction.customId.split('_')[2];
             const cargoId = interaction.values[0];
-            const registro = registrosPendentes[userId];
+            const registro = await RegistroPendente.findOne({ userId });
 
             if (!registro) {
                 return interaction.editReply('Este registro não existe ou já foi processado.');
@@ -417,19 +370,14 @@ function setup(client) {
 
             await member.setNickname(newNick).catch(() => {});
 
-            // CÓDIGO CORRIGIDO
-            // Garante que membrosDB[userId] é um array antes de usar .push()
-            if (!membrosDB[userId] || !Array.isArray(membrosDB[userId])) {
-                membrosDB[userId] = [];
-            }
-            membrosDB[userId].push({
+            // Salva o registro no banco de membros
+            await Membro.create({
+                userId: registro.userId,
                 nomeSobrenome: registro.nomeSobrenome,
                 rg: registro.rg,
                 cargoId: cargoId,
-                dataRegistro: new Date().toISOString()
+                dataRegistro: new Date()
             });
-            await saveMembrosDB();
-            await clearOldRecords();
 
             const pendingChannel = interaction.guild.channels.cache.get(configIDs.PENDING_REGISTRATIONS_CHANNEL_ID);
             const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
@@ -441,8 +389,8 @@ function setup(client) {
                 components: []
             });
 
-            delete registrosPendentes[userId];
-            await saveRegistros();
+            // Deleta o registro pendente do banco de dados
+            await RegistroPendente.deleteOne({ userId });
 
             await interaction.editReply({ content: '<a:positivo:1402749751056797707> Registro aprovado com sucesso!', components: [] });
         }
@@ -450,8 +398,9 @@ function setup(client) {
         if (interaction.isModalSubmit() && interaction.customId.startsWith('negar_modal_')) {
             await interaction.deferReply({ ephemeral: true });
             const userId = interaction.customId.split('_')[2];
-            const registro = registrosPendentes[userId];
             const motivo = interaction.fields.getTextInputValue('motivo');
+
+            const registro = await RegistroPendente.findOne({ userId });
 
             if (!registro) {
                 return interaction.editReply('Este registro não existe ou já foi processado.');
@@ -475,8 +424,8 @@ function setup(client) {
                 await deniedLogsChannel.send({ embeds: [deniedEmbed] });
             }
 
-            delete registrosPendentes[userId];
-            await saveRegistros();
+            // Deleta o registro pendente do banco de dados
+            await RegistroPendente.deleteOne({ userId });
 
             await interaction.editReply('<a:negativo:1402749793553350806> Registro negado com sucesso!');
         }

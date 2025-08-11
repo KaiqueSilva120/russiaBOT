@@ -1,5 +1,5 @@
-const path = require('path');
-const fs = require('fs').promises;
+const connectToDatabase = require('../database');
+const Ausencia = require('../models/Ausencia');
 const {
     EmbedBuilder,
     ActionRowBuilder,
@@ -15,7 +15,7 @@ const {
 const CANAL_SOLICITAR_AUSENCIA = '1403591556019261532';
 const CANAL_AUSENCIAS = '1354897177779900597';
 const CARGO_AUSENTE = '1354977769309601943';
-const AUSENCIA_LOGS_CHANNEL_ID = 'YOUR_LOG_CHANNEL_ID_HERE'; // Replace with your actual log channel ID
+const AUSENCIA_LOGS_CHANNEL_ID = '1403603952234397728';
 
 // IDs para os emojis
 const EMOJI_AVISOS = '<:avisos:1402749723634303060>';
@@ -23,40 +23,10 @@ const EMOJI_WARNING = '<a:c_warningrgbFXP:1403098424689033246>';
 const EMOJI_RELOGIO = '<a:relogio:1403118839557918770>';
 const EMOJI_POSITIVO = '<a:positivo:1402749751056797707>';
 const EMOJI_NEGATIVO = '<a:negativo:1402749793553350806>';
+const EMOJI_SLASHCOMMANDS = '<:SlashCommands:1402754768702672946>';
 
 // URL da imagem fixa
 const IMAGEM_AUSENCIA = 'https://cdn.discordapp.com/attachments/1242690408782495757/1403224241582637146/AUSENCIA.png?ex=6896c5e9&is=68957469&hm=b312cc572439e741676a082ddd2cc2c5dff32c7710a2a36fdaa8f17d2a13d2bc&';
-
-const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
-const AUSENCIAS_FILE = path.join(BANCO_DIR, 'ausencias.json');
-
-let ausencias = {};
-
-/**
- * Carrega as ausências do arquivo JSON.
- */
-async function loadAusencias() {
-    try {
-        const data = await fs.readFile(AUSENCIAS_FILE, 'utf8');
-        ausencias = JSON.parse(data);
-    } catch (error) {
-        console.error('[Ausencia.js] Arquivo de ausências não encontrado, inicializando um novo objeto...');
-        ausencias = {};
-        await saveAusencias();
-    }
-}
-
-/**
- * Salva as ausências no arquivo JSON.
- */
-async function saveAusencias() {
-    try {
-        const data = JSON.stringify(ausencias, null, 2);
-        await fs.writeFile(AUSENCIAS_FILE, data, 'utf8');
-    } catch (error) {
-        console.error('[Ausencia.js] Erro ao salvar o arquivo de ausências:', error);
-    }
-}
 
 /**
  * Envia a mensagem fixa de ausência.
@@ -90,111 +60,63 @@ async function sendFixedAbsenceMessage(channel, clientUser) {
 
 // Lógica principal do sistema
 module.exports = (client) => {
-    // Define o comando de barra para o sistema de gerenciamento de comandos
-    const ausentesListaCommand = {
-        data: new SlashCommandBuilder()
-            .setName('ausenteslista')
-            .setDescription('Lista todos os membros atualmente em ausência.'),
-        async execute(interaction) {
-            await interaction.deferReply();
-
-            if (Object.keys(ausencias).length === 0) {
-                return interaction.editReply('Não há membros em ausência no momento.');
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor('#ff4242')
-                .setTitle(`${EMOJI_RELOGIO} LISTA DE MEMBROS EM AUSENCIA`)
-                .setThumbnail(client.user.displayAvatarURL({
-                    dynamic: true
-                }));
-
-            for (const userId in ausencias) {
-                const ausencia = ausencias[userId];
-                const user = await client.users.fetch(ausencia.userId);
-                embed.addFields({
-                    name: ``,
-                    value: `
-Membro: <@${ausencia.userId}>
-RG do membro: \`${ausencia.rg}\`
-Motivo da Ausência: ${ausencia.motivo}
-Data de Entrada: ${ausencia.dataEntrada}
-Data de Retorno: ${ausencia.dataRetorno}
-Previsão de Retorno: <t:${ausencia.retornoTimestamp}:R>
-Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausencia.guildId}/${ausencia.channelId}/${ausencia.messageId})
-`,
-                    inline: false
-                }, {
-                    name: '\u200B',
-                    value: '--------------',
-                    inline: false
-                });
-            }
-
-            await interaction.editReply({
-                embeds: [embed]
-            });
-        },
-    };
-
-    client.commands.set(ausentesListaCommand.data.name, ausentesListaCommand);
+    // Conecta ao banco de dados ao iniciar
+    connectToDatabase();
 
     // Lógica de verificação para expiração de ausências
     setInterval(async () => {
         const now = Math.floor(Date.now() / 1000);
-        await loadAusencias(); // Recarrega os dados para ter a versão mais recente
-
-        for (const userId in ausencias) {
-            const ausencia = ausencias[userId];
-            if (now >= ausencia.retornoTimestamp) {
-                const guild = client.guilds.cache.get(ausencia.guildId);
-                if (guild) {
-                    const member = guild.members.cache.get(ausencia.userId);
-                    if (member) {
-                        const cargoAusente = guild.roles.cache.get(CARGO_AUSENTE);
-                        if (cargoAusente) {
-                            await member.roles.remove(cargoAusente).catch(console.error);
-                        }
-                    }
-                }
-
-                const canalAusencias = client.channels.cache.get(ausencia.channelId);
-                if (canalAusencias) {
-                    const originalMessage = await canalAusencias.messages.fetch(ausencia.messageId);
-                    if (originalMessage) {
-                        const originalEmbed = originalMessage.embeds[0];
-                        const newEmbed = EmbedBuilder.from(originalEmbed)
-                            .setColor('#4287f5')
-                            .addFields({
-                                name: 'Ausência Expirada:',
-                                value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
-                                inline: false
-                            });
-
-                        await originalMessage.edit({
-                            embeds: [newEmbed],
-                            components: []
-                        });
-                    }
-                }
-
-                // Envia log de ausência expirada
-                const logChannel = client.channels.cache.get(AUSENCIA_LOGS_CHANNEL_ID);
-                if (logChannel) {
-                    logChannel.send({
-                        content: `<@${ausencia.userId}> (RG: ${ausencia.rg}) teve sua ausência expirada.`
-                    });
-                }
-
-                delete ausencias[userId];
-                await saveAusencias();
+        const ausenciasExpiradas = await Ausencia.find({
+            retornoTimestamp: {
+                $lte: now
             }
+        });
+
+        for (const ausencia of ausenciasExpiradas) {
+            const guild = client.guilds.cache.get(ausencia.guildId);
+            if (guild) {
+                const member = guild.members.cache.get(ausencia.memberId);
+                if (member) {
+                    const cargoAusente = guild.roles.cache.get(CARGO_AUSENTE);
+                    if (cargoAusente) {
+                        await member.roles.remove(cargoAusente).catch(console.error);
+                    }
+                }
+            }
+
+            const canalAusencias = client.channels.cache.get(ausencia.channelId);
+            if (canalAusencias) {
+                const originalMessage = await canalAusencias.messages.fetch(ausencia.messageId);
+                if (originalMessage) {
+                    const originalEmbed = originalMessage.embeds[0];
+                    const newEmbed = EmbedBuilder.from(originalEmbed)
+                        .setColor('#4287f5')
+                        .addFields({
+                            name: 'Ausência Expirada:',
+                            value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
+                            inline: false
+                        });
+
+                    await originalMessage.edit({
+                        embeds: [newEmbed],
+                        components: []
+                    }).catch(err => console.error(`[ERRO AO EDITAR MENSAGEM] Ausência Expirada:`, err));
+                }
+            }
+            
+            // Envia log de ausência expirada
+            const logChannel = client.channels.cache.get(AUSENCIA_LOGS_CHANNEL_ID);
+            if (logChannel) {
+                logChannel.send({
+                    content: `${EMOJI_SLASHCOMMANDS} | O Membro <@${ausencia.memberId}> saiu de ausência ao atingir a data de retorno.`
+                }).catch(err => console.error(`[ERRO AO ENVIAR LOG] Ausência Expirada:`, err));
+            }
+
+            await Ausencia.findByIdAndDelete(ausencia._id);
         }
     }, 60000);
 
     client.once('ready', async () => {
-        await loadAusencias();
-
         const canalSolicitar = client.channels.cache.get(CANAL_SOLICITAR_AUSENCIA);
         if (canalSolicitar && canalSolicitar.isTextBased()) {
             try {
@@ -275,6 +197,17 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
                 ephemeral: true
             });
 
+            // Adicionando a verificação para ausência existente
+            const ausenciaExistente = await Ausencia.findOne({
+                memberId: interaction.user.id
+            });
+            if (ausenciaExistente) {
+                await interaction.editReply({
+                    content: `${EMOJI_NEGATIVO} Você já possui uma ausência ativa registrada no banco de dados. Por favor, saia da ausência anterior antes de solicitar uma nova.`,
+                });
+                return;
+            }
+
             const rg = interaction.fields.getTextInputValue('rg_input');
             const motivo = interaction.fields.getTextInputValue('motivo_input');
             const dataEntrada = interaction.fields.getTextInputValue('data_entrada_input');
@@ -342,26 +275,28 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
                     components: [row]
                 });
 
-                ausencias[interaction.user.id] = {
-                    userId: interaction.user.id,
+                const novaAusencia = new Ausencia({
+                    memberId: interaction.user.id,
+                    memberName: interaction.user.tag,
+                    motivo: motivo,
+                    dataSaida: dataEntrada,
+                    dataRetorno: dataRetorno,
+                    moderadorId: interaction.user.id,
+                    guildId: interaction.guild.id,
                     messageId: sentMessage.id,
                     channelId: sentMessage.channel.id,
-                    guildId: interaction.guild.id,
-                    rg,
-                    motivo,
-                    dataEntrada,
-                    dataRetorno,
-                    retornoTimestamp
-                };
+                    rg: rg,
+                    retornoTimestamp: retornoTimestamp
+                });
 
-                await saveAusencias();
-
-                // Envia log de solicitação de ausência
+                await novaAusencia.save();
+                
+                // Envia log de solicitação de ausência para o canal de logs
                 const logChannel = interaction.guild.channels.cache.get(AUSENCIA_LOGS_CHANNEL_ID);
                 if (logChannel) {
                     logChannel.send({
-                        content: `<@${interaction.user.id}> (RG: ${rg}) solicitou uma ausência com o motivo: "${motivo}" e retorno em ${dataRetorno}.`
-                    });
+                        content: `${EMOJI_SLASHCOMMANDS} | O Membro <@${interaction.user.id}> entrou em ausência. Link: ${sentMessage.url}`
+                    }).catch(err => console.error(`[ERRO AO ENVIAR LOG] Solicitação de ausência:`, err));
                 }
 
                 await interaction.editReply({
@@ -380,7 +315,10 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
                 });
             }
 
-            const ausencia = ausencias[userId];
+            const ausencia = await Ausencia.findOne({
+                memberId: userId
+            });
+
             if (!ausencia) {
                 return interaction.reply({
                     content: `${EMOJI_NEGATIVO} Não foi possível encontrar sua ausência.`,
@@ -402,32 +340,35 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
 
             const canalAusencias = interaction.guild.channels.cache.get(ausencia.channelId);
             if (canalAusencias) {
-                const originalMessage = await canalAusencias.messages.fetch(ausencia.messageId);
-                if (originalMessage) {
-                    const originalEmbed = originalMessage.embeds[0];
-                    const newEmbed = EmbedBuilder.from(originalEmbed)
-                        .setColor('#008000')
-                        .addFields({
-                            name: 'Retorno Antecipado:',
-                            value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
-                            inline: false
-                        });
+                try {
+                    const originalMessage = await canalAusencias.messages.fetch(ausencia.messageId);
+                    if (originalMessage) {
+                        const originalEmbed = originalMessage.embeds[0];
+                        const newEmbed = EmbedBuilder.from(originalEmbed)
+                            .setColor('#008000')
+                            .addFields({
+                                name: 'Retorno Antecipado:',
+                                value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
+                                inline: false
+                            });
 
-                    await originalMessage.edit({
-                        embeds: [newEmbed],
-                        components: []
-                    });
+                        await originalMessage.edit({
+                            embeds: [newEmbed],
+                            components: []
+                        }).catch(err => console.error(`[ERRO AO EDITAR MENSAGEM] Retorno Antecipado:`, err));
+                        
+                        // Envia log de retorno antecipado para o canal de logs
+                        const logChannel = interaction.guild.channels.cache.get(AUSENCIA_LOGS_CHANNEL_ID);
+                        if (logChannel) {
+                            logChannel.send({
+                                content: `${EMOJI_SLASHCOMMANDS} | O Membro <@${userId}> saiu de ausência ao clicar em Sair da Ausência. Link: ${originalMessage.url}`
+                            }).catch(err => console.error(`[ERRO AO ENVIAR LOG] Retorno Antecipado:`, err));
+                        }
 
-                    // Envia log de retorno antecipado
-                    const logChannel = interaction.guild.channels.cache.get(AUSENCIA_LOGS_CHANNEL_ID);
-                    if (logChannel) {
-                        logChannel.send({
-                            content: `<@${userId}> (RG: ${ausencia.rg}) retornou de sua ausência antes do previsto.`
-                        });
+                        await Ausencia.findByIdAndDelete(ausencia._id);
                     }
-
-                    delete ausencias[userId];
-                    await saveAusencias();
+                } catch (error) {
+                    console.error(`[ERRO AO BUSCAR MENSAGEM] O membro tentou sair de ausência, mas a mensagem não foi encontrada:`, error);
                 }
             }
 

@@ -1,3 +1,4 @@
+// punidos.js
 const {
     SlashCommandBuilder,
     ActionRowBuilder,
@@ -12,24 +13,24 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const Punishment = require('../models/Punishment'); // Importa o modelo do Mongoose
+const connectToDatabase = require('../database'); // Importa a função de conexão
 
 // --- Configurações de Canais e IDs de Cargos ---
-const PUNISHED_CHANNEL_ID = '1403593194545086484'; // Canal da mensagem fixa do sistema de punições (botões)
-const PUNISHED_LOG_CHANNEL_ID = '1354897156133097572'; // Canal para onde as embeds de punição/remoção serão enviadas
-const EXPIRED_LOG_CHANNEL_ID = '1403603952234397728'; // Canal para logs de punições expiradas/removidas simplificados
+const PUNISHED_CHANNEL_ID = '1403593194545086484';
+const PUNISHED_LOG_CHANNEL_ID = '1354897156133097572';
+const EXPIRED_LOG_CHANNEL_ID = '1403603952234397728';
 
 // IDs dos cargos de punição
 const ROLES = {
-    LEVE: '1354891761046126884',      // 7 dias
-    MEDIA: '1354891870093709423',     // 14 dias
-    GRAVE: '1354891873902264530',     // 30 dias
-    EXONERACAO: '1403593461021544670', // Exoneração/PD
+    LEVE: '1354891761046126884',
+    MEDIA: '1354891870093709423',
+    GRAVE: '1354891873902264530',
+    EXONERACAO: '1403593461021544670',
 };
 
-// ID do cargo responsável por usar o painel de punições
 const RESPONSIBLE_ROLE_ID = '1354892110113018111';
 
-// Mapeamento de texto para IDs de cargos e dias
 const PUNISHMENT_TYPES = {
     'leve': { roleId: ROLES.LEVE, days: 7, name: 'Advertência Leve' },
     'media': { roleId: ROLES.MEDIA, days: 14, name: 'Advertência Média' },
@@ -37,9 +38,7 @@ const PUNISHMENT_TYPES = {
     'exoneração': { roleId: ROLES.EXONERACAO, days: 0, name: 'Exoneração/PD', unremovable: true },
 };
 
-const BANCO_DIR = path.join(__dirname, '../banco');
-const PUNISHED_DB_FILE = path.join(BANCO_DIR, 'punicoes.json');
-const REGISTRO_ID_FILE = path.join(BANCO_DIR, 'registroID.json');
+const REGISTRO_ID_FILE = path.join(__dirname, '../banco', 'registroID.json');
 
 // --- Carregar Cargos de Registro do Arquivo ---
 let REGISTRATION_ROLES = [];
@@ -54,39 +53,6 @@ try {
 // --- URls das Imagens ---
 const DEFAULT_PUNISHMENT_IMAGE = 'https://cdn.discordapp.com/attachments/1242690408782495757/1403222285023838258/PUNICAO_1.png?ex=6896c417&is=68957297&hm=74c900028d1254004f6d77c17828e915a45eb6e63e21db0771b3fb45e8a16d21&';
 
-
-// --- Funções de Manipulação do Banco de Dados ---
-/**
- * Carrega a lista de punições do arquivo JSON.
- * @returns {Array<Object>} Um array de objetos, cada um representando uma punição ativa.
- */
-function loadPunishments() {
-    try {
-        if (!fs.existsSync(BANCO_DIR)) {
-            fs.mkdirSync(BANCO_DIR, { recursive: true });
-        }
-        if (!fs.existsSync(PUNISHED_DB_FILE)) {
-            fs.writeFileSync(PUNISHED_DB_FILE, JSON.stringify([]));
-        }
-        const data = fs.readFileSync(PUNISHED_DB_FILE, 'utf-8');
-        return JSON.parse(data);
-    } catch (e) {
-        console.error('Erro ao carregar punições:', e);
-        return [];
-    }
-}
-
-/**
- * Salva a lista de punições no arquivo JSON.
- * @param {Array<Object>} punishments - O array de objetos de punições a ser salvo.
- */
-function savePunishments(punishments) {
-    try {
-        fs.writeFileSync(PUNISHED_DB_FILE, JSON.stringify(punishments, null, 2));
-    } catch (e) {
-        console.error('Erro ao salvar punições:', e);
-    }
-}
 
 // --- Funções de Criação de Componentes UI ---
 
@@ -379,9 +345,11 @@ async function extractUserId(guild, input) {
  * @param {Client} client - O cliente Discord.
  */
 async function checkExpiredPunishments(client) {
-    let punishments = loadPunishments();
-    const expired = punishments.filter(p => p.expiresAt && Date.now() > p.expiresAt);
-    const nonExpired = punishments.filter(p => !p.expiresAt || Date.now() <= p.expiresAt);
+    // Carrega as punições expiradas do banco de dados
+    const expired = await Punishment.find({
+        expiresAt: { $exists: true, $lt: Date.now() },
+        punishmentType: { $ne: 'exoneração' } // Não remove exonerações
+    });
 
     if (expired.length > 0) {
         console.log(`[PUNIDOS] Encontradas ${expired.length} punições expiradas. Removendo...`);
@@ -390,7 +358,10 @@ async function checkExpiredPunishments(client) {
 
         for (const punishment of expired) {
             const guild = await client.guilds.fetch(client.guilds.cache.first().id);
-            if (!guild) continue;
+            if (!guild) {
+                await Punishment.findByIdAndDelete(punishment._id);
+                continue;
+            }
 
             const member = await guild.members.fetch(punishment.memberId).catch(() => null);
 
@@ -398,6 +369,7 @@ async function checkExpiredPunishments(client) {
                 try {
                     await member.roles.remove(punishment.roleId, 'Punição expirada automaticamente.');
                     console.log(`[PUNIDOS] Cargo de punição ${punishment.roleId} removido de ${member.user.tag}.`);
+                    
                     if (logChannel) {
                         const logEmbed = createPunishmentExpiredLogEmbed(punishment);
                         await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
@@ -406,11 +378,14 @@ async function checkExpiredPunishments(client) {
                         const simplifiedLogMessage = createSimplifiedExpiredLogMessage(punishment);
                         await simplifiedLogChannel.send({ content: simplifiedLogMessage }).catch(console.error);
                     }
+                    await Punishment.findByIdAndDelete(punishment._id);
+
                 } catch (e) {
                     console.error(`[PUNIDOS] Erro ao remover cargo de ${member.user.tag}:`, e);
                 }
             } else if (member) {
                 console.log(`[PUNIDOS] Membro ${member.user.tag} não possui mais o cargo de punição. Removendo do registro.`);
+                await Punishment.findByIdAndDelete(punishment._id);
             } else {
                 console.log(`[PUNIDOS] Membro com ID ${punishment.memberId} não encontrado no servidor. Removendo do registro.`);
                 if (logChannel) {
@@ -429,24 +404,29 @@ async function checkExpiredPunishments(client) {
                     const simplifiedLogMessage = `<:SlashCommands:1402754768702672946> | Punição de <@${punishment.memberId}> foi removida por cumprir o tempo previsto (membro não encontrado).`;
                     await simplifiedLogChannel.send({ content: simplifiedLogMessage }).catch(console.error);
                 }
+                await Punishment.findByIdAndDelete(punishment._id);
             }
         }
-        savePunishments(nonExpired);
         console.log('[PUNIDOS] Limpeza de punições expiradas concluída.');
     }
 }
 
 // --- Exportações do Módulo ---
 module.exports = (client) => {
-    client.punishments = loadPunishments();
 
     client.once('ready', async () => {
-        console.log('[PUNIDOS] Iniciando limpeza e envio do painel de punições...');
-        await ensurePunishmentMessage(client);
+        console.log('[PUNIDOS] Tentando conectar ao banco de dados...');
+        const dbConnected = await connectToDatabase();
+        if (dbConnected) {
+            console.log('[PUNIDOS] Iniciando limpeza e envio do painel de punições...');
+            await ensurePunishmentMessage(client);
 
-        // Inicia a verificação de punições expiradas
-        setInterval(() => checkExpiredPunishments(client), 10 * 60 * 1000); // Roda a cada 10 minutos
-        console.log('[PUNIDOS] Verificador de punições expiradas iniciado.');
+            // Inicia a verificação de punições expiradas
+            setInterval(() => checkExpiredPunishments(client), 10 * 60 * 1000); // Roda a cada 10 minutos
+            console.log('[PUNIDOS] Verificador de punições expiradas iniciado.');
+        } else {
+            console.error('[PUNIDOS] Não foi possível conectar ao banco de dados. Funcionalidade de punições desativada.');
+        }
     });
 
     client.on('interactionCreate', async (interaction) => {
@@ -515,10 +495,7 @@ module.exports = (client) => {
             }
 
             if (interaction.customId === 'punish_remove') {
-                const removablePunishments = loadPunishments().filter(p => {
-                    const typeInfo = PUNISHMENT_TYPES[p.punishmentType];
-                    return typeInfo && !typeInfo.unremovable;
-                });
+                const removablePunishments = await Punishment.find({ 'punishmentType': { $ne: 'exoneração' } });
 
                 if (removablePunishments.length === 0) {
                     await interaction.reply({ content: 'Não há punições removíveis ativas no momento (Punições de Exoneração não podem ser removidas por este painel).', ephemeral: true });
@@ -532,7 +509,7 @@ module.exports = (client) => {
                         removablePunishments.map((p) => ({
                             label: `${p.memberName} (${PUNISHMENT_TYPES[p.punishmentType]?.name || p.punishmentType})`,
                             description: `Motivo: ${p.reason.slice(0, 50)}...`,
-                            value: p.id,
+                            value: p._id.toString(), // Usa o _id do MongoDB
                         }))
                     );
 
@@ -581,15 +558,12 @@ module.exports = (client) => {
 
                 const memberDisplayName = member.displayName || member.user.username;
 
-                const punishmentId = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-
                 let expiresAt = null;
                 if (punishmentInfo.days > 0) {
                     expiresAt = Date.now() + (punishmentInfo.days * 24 * 60 * 60 * 1000);
                 }
 
-                const newPunishment = {
-                    id: punishmentId,
+                const newPunishment = new Punishment({
                     memberId: member.id,
                     memberName: memberDisplayName,
                     punishmentType: punishmentType,
@@ -599,14 +573,10 @@ module.exports = (client) => {
                     punishedAt: Date.now(),
                     expiresAt: expiresAt,
                     logMessageId: null,
-                    guildId: interaction.guild.id, // Salva o ID do servidor
-                    logChannelId: PUNISHED_LOG_CHANNEL_ID, // Salva o ID do canal de log
+                    guildId: interaction.guild.id,
+                    logChannelId: PUNISHED_LOG_CHANNEL_ID,
                     highestRole: getHighestRole(member)
-                };
-
-                let currentPunishments = loadPunishments();
-                currentPunishments.push(newPunishment);
-                savePunishments(currentPunishments);
+                });
 
                 const logChannel = await interaction.client.channels.fetch(PUNISHED_LOG_CHANNEL_ID);
                 if (logChannel && logChannel.isTextBased()) {
@@ -614,7 +584,6 @@ module.exports = (client) => {
                     try {
                         const sentLogMessage = await logChannel.send({ embeds: [logEmbed] });
                         newPunishment.logMessageId = sentLogMessage.id;
-                        savePunishments(currentPunishments);
                     } catch (logError) {
                         console.error('Erro ao enviar embed de log para o canal de punições:', logError);
                     }
@@ -623,6 +592,8 @@ module.exports = (client) => {
                 }
 
                 try {
+                    await newPunishment.save();
+                    
                     const allPunishmentRoleIds = Object.values(ROLES);
                     await member.roles.remove(allPunishmentRoleIds, 'Removendo cargos de punição antigos para aplicar novo.');
 
@@ -656,16 +627,12 @@ module.exports = (client) => {
             }
 
             const punishmentIdToRemove = interaction.values[0];
-            let currentPunishments = loadPunishments();
-            const punishmentIndex = currentPunishments.findIndex(p => p.id === punishmentIdToRemove);
+            const removedPunishment = await Punishment.findByIdAndDelete(punishmentIdToRemove);
 
-            if (punishmentIndex === -1) {
+            if (!removedPunishment) {
                 await interaction.followUp({ content: '<:Negativo:1403204560058585138> Punição não encontrada ou já removida.', ephemeral: true });
                 return;
             }
-
-            const removedPunishment = currentPunishments.splice(punishmentIndex, 1)[0];
-            savePunishments(currentPunishments);
 
             const member = await interaction.guild.members.fetch(removedPunishment.memberId).catch(() => null);
             if (member && member.roles.cache.has(removedPunishment.roleId)) {

@@ -1,9 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DiscordAPIError } = require('discord.js');
-const fs = require('fs').promises;
 const path = require('path');
-
-const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
-const MEMBROS_DB_FILE = path.join(BANCO_DIR, 'membrosDB.json');
+const connectToDatabase = require('../database');
+const Membro = require('../models/Membro');
+const fs = require('fs').promises;
 
 module.exports = (client) => {
     const cargosIDsHierarquia = [
@@ -169,21 +168,16 @@ module.exports = (client) => {
             }
 
             try {
-                const membrosData = await fs.readFile(MEMBROS_DB_FILE, 'utf8');
-                const membrosDB = JSON.parse(membrosData);
+                await connectToDatabase();
+                const registrosRecentes = await Membro.find({}).sort({ dataRegistro: -1 }).limit(10);
                 
                 const recentMembersList = [];
                 let totalRecentMembers = 0;
 
-                for (const userId in membrosDB) {
-                    if (Object.prototype.hasOwnProperty.call(membrosDB, userId) && Array.isArray(membrosDB[userId])) {
-                        const registrations = membrosDB[userId];
-                        for (const reg of registrations) {
-                            const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
-                            recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
-                            totalRecentMembers++;
-                        }
-                    }
+                for (const reg of registrosRecentes) {
+                    const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
+                    recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
+                    totalRecentMembers++;
                 }
 
                 if (recentMembersList.length > 0) {
@@ -200,11 +194,11 @@ module.exports = (client) => {
                     });
                 }
             } catch (error) {
-                console.error('[MEMBROS] Erro ao ler membrosDB.json:', error);
+                console.error('[MEMBROS] Erro ao carregar registros recentes do banco de dados:', error);
                 if (pages.length > 0) {
                     pages[pages.length - 1].addFields({
                         name: 'Erro ao carregar registros recentes',
-                        value: 'Não foi possível carregar a lista de registros recentes.',
+                        value: 'Não foi possível carregar a lista de registros recentes do banco de dados.',
                     });
                 }
             }
@@ -262,6 +256,33 @@ module.exports = (client) => {
                     console.error('Erro ao editar a resposta da interação:', error);
                 }
             }
+
+            const collector = initialMessage.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 300000
+            });
+
+            let currentPage = 0;
+
+            collector.on('collect', async (i) => {
+                const customId = i.customId;
+                if (customId === `prev_page_${currentPage}`) {
+                    currentPage--;
+                } else if (customId === `next_page_${currentPage}`) {
+                    currentPage++;
+                } else {
+                    return;
+                }
+
+                await i.update({
+                    embeds: [pages[currentPage]],
+                    components: [getRow(currentPage)],
+                });
+            });
+
+            collector.on('end', async () => {
+                await initialMessage.edit({ components: [] }).catch(console.error);
+            });
         },
     };
 
@@ -375,21 +396,20 @@ module.exports = (client) => {
             }
 
             if (currentFieldCount > 0) pages.push(currentPageEmbed);
+
             try {
-                const membrosData = await fs.readFile(MEMBROS_DB_FILE, 'utf8');
-                const membrosDB = JSON.parse(membrosData);
+                await connectToDatabase();
+                const registrosRecentes = await Membro.find({}).sort({ dataRegistro: -1 }).limit(10);
+                
                 const recentMembersList = [];
                 let totalRecentMembers = 0;
-                for (const userId in membrosDB) {
-                    if (Object.prototype.hasOwnProperty.call(membrosDB, userId) && Array.isArray(membrosDB[userId])) {
-                        const registrations = membrosDB[userId];
-                        for (const reg of registrations) {
-                            const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
-                            recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
-                            totalRecentMembers++;
-                        }
-                    }
+
+                for (const reg of registrosRecentes) {
+                    const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
+                    recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
+                    totalRecentMembers++;
                 }
+
                 if (recentMembersList.length > 0) {
                     let lastPage = pages[pages.length - 1];
                     if (!lastPage || lastPage.data.fields.length >= maxFieldsPerPage) {
@@ -400,7 +420,7 @@ module.exports = (client) => {
                     lastPage.addFields({ name: `<:ponto:1404150420883898510> Registrados Recentemente (${totalRecentMembers}):`, value: recentMembersText });
                 }
             } catch (error) {
-                console.error('[MEMBROS] Erro ao ler membrosDB.json:', error);
+                console.error('[MEMBROS] Erro ao carregar registros recentes do banco de dados:', error);
                 if (pages.length > 0) {
                     pages[pages.length - 1].addFields({ name: 'Erro ao carregar registros recentes', value: 'Não foi possível carregar a lista de registros recentes.' });
                 }
