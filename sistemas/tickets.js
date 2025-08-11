@@ -7,7 +7,7 @@ const GUILD_ID = '1354890930746036516'; // ID do seu servidor
 const ATENDIMENTO_CHANNEL_ID = '1403594145393545337';
 const CATEGORIA_TICKET_ID = '1403591198064775259';
 const GESTAO_ROLE_ID = '1354891875844100278'; // ID do cargo da equipe de gestão (CORRIGIDO: Removido o '<')
-const LOG_CHANNEL_ID = '1403594462097047552';
+const LOG_CHANNEL_ID = '1383886201454460980';
 
 // Caminhos para os arquivos de dados
 const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
