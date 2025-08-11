@@ -267,7 +267,7 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
     if (interaction.isModalSubmit() && interaction.customId === 'ausencia_modal') {
       // Deferindo a resposta como efêmera para evitar o timeout
       await interaction.deferReply({
-        flags: InteractionResponseFlags.Ephemeral
+        ephemeral: true
       });
 
       const rg = interaction.fields.getTextInputValue('rg_input');
@@ -364,7 +364,7 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
       if (userId !== interaction.user.id) {
         return interaction.reply({
           content: `${EMOJI_NEGATIVO} Você só pode dar saída da sua própria ausência.`,
-          flags: InteractionResponseFlags.Ephemeral
+          ephemeral: true
         });
       }
 
@@ -372,12 +372,12 @@ Ausencia: [Clique aqui para ver a Ausencia](https://discord.com/channels/${ausen
       if (!ausencia) {
         return interaction.reply({
           content: `${EMOJI_NEGATIVO} Não foi possível encontrar sua ausência.`,
-          flags: InteractionResponseFlags.Ephemeral
+          ephemeral: true
         });
       }
 
       await interaction.deferReply({
-        flags: InteractionResponseFlags.Ephemeral
+        ephemeral: true
       });
 
       const member = interaction.guild.members.cache.get(userId);

@@ -200,7 +200,7 @@ module.exports = (client) => {
                 await interaction.showModal(modal);
 
             } else if (interaction.customId === 'blacklist_remove') {
-                // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+
                 await interaction.deferReply({ ephemeral: true });
 
                 const currentBlacklist = loadBlacklist();
@@ -229,7 +229,7 @@ module.exports = (client) => {
 
         // Manipulador para o modal de adicionar blacklist
         if (interaction.isModalSubmit() && interaction.customId === 'blacklist_add_modal') {
-             // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+
              await interaction.deferReply({ ephemeral: true });
             
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
@@ -258,7 +258,7 @@ module.exports = (client) => {
 
         // Manipulador para o menu de seleção de remoção
         if (interaction.isStringSelectMenu() && interaction.customId === 'blacklist_remove_select') {
-             // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+
              await interaction.deferReply({ ephemeral: true });
 
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {

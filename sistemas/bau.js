@@ -105,9 +105,9 @@ module.exports = (client) => {
 
             if (bestMatch.rating > 0.6) {
                 const suggestedMainName = findMainItemName(bestMatch.target, itensValidos);
-                return interaction.reply({ content: `Item não encontrado! Você quis dizer '${suggestedMainName}'?`, flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: `Item não encontrado! Você quis dizer '${suggestedMainName}'?`, ephemeral: true });
             } else {
-                return interaction.reply({ content: `Item não encontrado! O item '${itemName}' não foi encontrado na lista de itens válidos, se vc acha que deveria estar na lista, peço que abra um ticket e nos informe.`, flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: `Item não encontrado! O item '${itemName}' não foi encontrado na lista de itens válidos, se vc acha que deveria estar na lista, peço que abra um ticket e nos informe.`, ephemeral: true });
             }
         }
 
@@ -157,7 +157,7 @@ module.exports = (client) => {
                 });
             logChannel.send({ embeds: [logEmbed] });
         }
-        await interaction.reply({ content: `<:Positivo:1403203942573150362> Sucesso! Você ${actionType} ${quantity}x **${mainItemName}** do baú.`, flags: InteractionResponseFlags.Ephemeral });
+        await interaction.reply({ content: `<:Positivo:1403203942573150362> Sucesso! Você ${actionType} ${quantity}x **${mainItemName}** do baú.`, ephemeral: true });
     }
 
     // Comandos Slash
@@ -230,7 +230,7 @@ module.exports = (client) => {
                 const userHistory = movimentacoes.filter(mov => mov.userId === user.id);
 
                 if (userHistory.length === 0) {
-                    return interaction.reply({ content: `O usuário ${user.username} não tem movimentações registradas.`, flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: `O usuário ${user.username} não tem movimentações registradas.`, ephemeral: true });
                 }
 
                 // Extrai nome e RG do nome de exibição (nick) do usuário
@@ -311,7 +311,7 @@ module.exports = (client) => {
                     const itemNames = items.map(item => item.name).join(', ');
                     return `**${cat.toUpperCase()}**\n- ${itemNames}\n`;
                 }).join('\n');
-                return interaction.reply({ content: `**Lista de Itens Válidos:**\n\n${lista}`, flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: `**Lista de Itens Válidos:**\n\n${lista}`, ephemeral: true });
             }
         },
         {
@@ -324,19 +324,19 @@ module.exports = (client) => {
                         .setRequired(true)),
             async execute(interaction) {
                 if (!interaction.member.roles.cache.has(RESPONSAVEL_BAU_ROLE_ID)) {
-                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', ephemeral: true });
                 }
 
                 const itemName = interaction.options.getString('item').toLowerCase();
                 const bauData = readJSON(bauFilePath);
 
                 if (!bauData[itemName]) {
-                    return interaction.reply({ content: `O item '${itemName}' não foi encontrado no baú.`, flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: `O item '${itemName}' não foi encontrado no baú.`, ephemeral: true });
                 }
 
                 delete bauData[itemName];
                 saveJSON(bauFilePath, bauData);
-                await interaction.reply({ content: `O saldo do item '${itemName}' foi redefinido com sucesso!`, flags: InteractionResponseFlags.Ephemeral });
+                await interaction.reply({ content: `<:Positivo:1403203942573150362> O saldo do item '${itemName}' foi redefinido com sucesso!` });
 
                 const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
                 if (logChannel) {
@@ -351,7 +351,7 @@ module.exports = (client) => {
                 .setDescription('Redefine todo o baú e histórico de movimentações.'),
             async execute(interaction) {
                 if (!interaction.member.roles.cache.has(RESPONSAVEL_BAU_ROLE_ID)) {
-                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', ephemeral: true });
                 }
 
                 const bauData = {};
@@ -360,7 +360,7 @@ module.exports = (client) => {
                 saveJSON(bauFilePath, bauData);
                 saveJSON(movimentacoesFilePath, movimentacoes);
 
-                await interaction.reply({ content: '<a:like1:1369644902010458143> O baú e todo o histórico de movimentações foram limpos!!', flags: InteractionResponseFlags.Ephemeral });
+                await interaction.reply({ content: '<a:like1:1369644902010458143> O baú e todo o histórico de movimentações foram limpos!!' });
 
                 const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
                 if (logChannel) {
@@ -375,11 +375,11 @@ module.exports = (client) => {
                 .setDescription('Inicializa a mensagem fixa do baú com botões.'),
             async execute(interaction) {
                 if (!interaction.member.roles.cache.has(RESPONSAVEL_BAU_ROLE_ID)) {
-                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', ephemeral: true });
                 }
                 
                 if (interaction.channel.id !== BAU_CHANNEL_ID) {
-                    return interaction.reply({ content: `Este comando só pode ser usado no canal <#${BAU_CHANNEL_ID}>.`, flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: `Este comando só pode ser usado no canal <#${BAU_CHANNEL_ID}>.`, ephemeral: true });
                 }
                 const embed = new EmbedBuilder()
                     .setTitle('📦 **Sistema de Controle de Baú**')
@@ -417,7 +417,7 @@ Balde de Frango, Refrigerante, Batata Frita, Cachorro Quente, Água
                     embeds: [embed],
                     components: [actionRow]
                 });
-                await interaction.reply({ content: 'Mensagem de baú inicializada!', flags: InteractionResponseFlags.Ephemeral });
+                await interaction.reply({ content: 'Mensagem de baú inicializada!', ephemeral: true });
             }
         }
     ];
@@ -453,7 +453,7 @@ Balde de Frango, Refrigerante, Batata Frita, Cachorro Quente, Água
                 const actionType = interaction.customId.includes('add') ? 'adicionou' : 'removeu';
 
                 if (isNaN(quantity) || quantity <= 0) {
-                    return interaction.reply({ content: 'A quantidade deve ser um número inteiro positivo.', flags: InteractionResponseFlags.Ephemeral });
+                    return interaction.reply({ content: 'A quantidade deve ser um número inteiro positivo.', ephemeral: true });
                 }
 
                 await registerSingleMovement(interaction, rg, itemName, quantity, actionType);
