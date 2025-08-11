@@ -15,7 +15,7 @@ const path = require('path');
 // --- Configurações da Blacklist ---
 const BLACKLIST_CHANNEL_ID = '1403592831951573072';
 const BLACKLIST_MESSAGE_TITLE = '<a:banned:1369644837930008707> LISTA DA BLACKLIST DA RÚSSIA';
-const BLACKLIST_MESSAGE_DESCRIPTION = '<a:setabranca:1403599822207979562> Os membros da lista abaixo estão proibidos de adentrar na Organização sem permissão concedida pela Alta Cúpula';
+const BLACKLIST_MESSAGE_DESCRIPTION = '<a:seta_gugu1:1398025125537775639> Os membros da lista abaixo estão proibidos de adentrar na Organização sem permissão concedida pela Alta Cúpula';
 const BLACKLIST_MESSAGE_IMAGE = 'https://cdn.discordapp.com/attachments/1242690408782495757/1403247489523650690/BLACKLIST.png?ex=6896db90&is=68958a10&hm=24e61cc5854db1b7a30db7d8eef03a7b725b0f15b0ade765474aed6e9eceaf4a&';
 
 // O ID do cargo responsável pela blacklist (corrigido para usar apenas o ID)

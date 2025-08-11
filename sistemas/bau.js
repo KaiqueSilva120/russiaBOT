@@ -12,7 +12,7 @@ module.exports = (client) => {
 
     // IDs dos canais
     const BAU_CHANNEL_ID = '1403592583539720262';
-    const LOGS_CHANNEL_ID = '1376578456732696668';
+    const LOGS_CHANNEL_ID = '1403592668168065145';
     const BOT_LOG_CHANNEL_ID = '1403603952234397728';
 
     // ID da role de Responsável pelo Baú

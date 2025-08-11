@@ -1,22 +1,24 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, ChannelType } = require('discord.js');
-const Database = require('better-sqlite3');
-const path = require('path');
 const fs = require('fs').promises;
+const path = require('path');
 
 const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
+const REGISTRO_FILE = path.join(BANCO_DIR, 'registro.json');
 const REGISTRO_ID_FILE = path.join(BANCO_DIR, 'registroID.json');
-const DB_FILE = path.join(BANCO_DIR, 'registro.db');
+const MEMBROS_DB_FILE = path.join(BANCO_DIR, 'membrosDB.json');
 
+let registrosPendentes = {};
 let configIDs = {};
-let db;
+let membrosDB = {};
 
 /**
- * Carrega o arquivo JSON de configuração e inicializa o banco de dados.
+ * Carrega os arquivos JSON de configuração e registros.
  */
-async function loadAndInitializeDB() {
+async function loadFiles() {
     try {
         await fs.mkdir(BANCO_DIR, { recursive: true });
-
+        
+        // Carrega registroID.json
         if (await fs.access(REGISTRO_ID_FILE).then(() => true).catch(() => false)) {
             const configData = await fs.readFile(REGISTRO_ID_FILE, 'utf8');
             configIDs = JSON.parse(configData);
@@ -25,94 +27,75 @@ async function loadAndInitializeDB() {
             return false;
         }
 
-        db = new Database(DB_FILE, { verbose: null });
-
-        // Cria a tabela de registros pendentes
-        db.prepare(`
-            CREATE TABLE IF NOT EXISTS registros_pendentes (
-                userId TEXT PRIMARY KEY,
-                nomeSobrenome TEXT,
-                rg TEXT,
-                telefone TEXT,
-                recrutador TEXT,
-                messageId TEXT
-            )
-        `).run();
-
-        // Cria a tabela de histórico de membros
-        db.prepare(`
-            CREATE TABLE IF NOT EXISTS membros (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                userId TEXT,
-                nomeSobrenome TEXT,
-                rg TEXT,
-                cargoId TEXT,
-                dataRegistro TEXT
-            )
-        `).run();
+        // Carrega registro.json
+        if (await fs.access(REGISTRO_FILE).then(() => true).catch(() => false)) {
+            const registroData = await fs.readFile(REGISTRO_FILE, 'utf8');
+            registrosPendentes = JSON.parse(registroData);
+        } else {
+            await fs.writeFile(REGISTRO_FILE, JSON.stringify({}), 'utf8');
+        }
+        
+        // Carrega membrosDB.json
+        if (await fs.access(MEMBROS_DB_FILE).then(() => true).catch(() => false)) {
+            const membrosData = await fs.readFile(MEMBROS_DB_FILE, 'utf8');
+            membrosDB = JSON.parse(membrosData);
+        } else {
+            await fs.writeFile(MEMBROS_DB_FILE, JSON.stringify({}), 'utf8');
+        }
         
         return true;
     } catch (error) {
-        console.error('[REGISTRO] Erro ao carregar arquivos e inicializar o banco de dados:', error);
+        console.error('[REGISTRO] Erro ao carregar arquivos JSON:', error);
         return false;
     }
 }
 
 /**
- * Salva um registro pendente no banco de dados.
- * @param {object} registroData - Os dados do registro.
- * @returns {object} O resultado da operação do banco de dados.
+ * Salva os registros pendentes no arquivo JSON.
  */
-function saveRegistroPendente(registroData) {
-    const stmt = db.prepare(`
-        INSERT OR REPLACE INTO registros_pendentes (userId, nomeSobrenome, rg, telefone, recrutador, messageId)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    return stmt.run(registroData.userId, registroData.nomeSobrenome, registroData.rg, registroData.telefone, registroData.recrutador, registroData.messageId);
+async function saveRegistros() {
+    try {
+        await fs.writeFile(REGISTRO_FILE, JSON.stringify(registrosPendentes, null, 2), 'utf8');
+    } catch (error) {
+        console.error('[REGISTRO] Erro ao salvar registros:', error);
+    }
 }
 
 /**
- * Busca um registro pendente pelo ID do usuário.
- * @param {string} userId - O ID do usuário.
- * @returns {object|undefined} O registro pendente ou undefined se não for encontrado.
+ * Salva o banco de dados de membros.
  */
-function getRegistroPendente(userId) {
-    const stmt = db.prepare('SELECT * FROM registros_pendentes WHERE userId = ?');
-    return stmt.get(userId);
+async function saveMembrosDB() {
+    try {
+        await fs.writeFile(MEMBROS_DB_FILE, JSON.stringify(membrosDB, null, 2), 'utf8');
+    } catch (error) {
+        console.error('[REGISTRO] Erro ao salvar banco de membros:', error);
+    }
 }
 
-/**
- * Deleta um registro pendente do banco de dados.
- * @param {string} userId - O ID do usuário.
- * @returns {object} O resultado da operação do banco de dados.
- */
-function deleteRegistroPendente(userId) {
-    const stmt = db.prepare('DELETE FROM registros_pendentes WHERE userId = ?');
-    return stmt.run(userId);
-}
+async function clearOldRecords() {
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    let recordsRemoved = false;
 
-/**
- * Salva o registro de um membro no banco de dados.
- * @param {object} membroData - Os dados do membro.
- * @returns {object} O resultado da operação do banco de dados.
- */
-function saveMembro(membroData) {
-    const stmt = db.prepare(`
-        INSERT INTO membros (userId, nomeSobrenome, rg, cargoId, dataRegistro)
-        VALUES (?, ?, ?, ?, ?)
-    `);
-    return stmt.run(membroData.userId, membroData.nomeSobrenome, membroData.rg, membroData.cargoId, membroData.dataRegistro);
-}
+    for (const userId in membrosDB) {
+        if (membrosDB[userId] && Array.isArray(membrosDB[userId])) {
+            const initialLength = membrosDB[userId].length;
+            membrosDB[userId] = membrosDB[userId].filter(record => {
+                const recordDate = new Date(record.dataRegistro).getTime();
+                return recordDate > sevenDaysAgo;
+            });
+            // Se o array de registros ficar vazio, remove a chave do usuário
+            if (membrosDB[userId].length < initialLength) {
+                recordsRemoved = true;
+            }
+            if (membrosDB[userId].length === 0) {
+                delete membrosDB[userId];
+            }
+        }
+    }
 
-/**
- * Limpa os registros antigos (mais de 7 dias) do banco de dados de membros.
- */
-function clearOldRecords() {
-    const sevenDaysAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000)).toISOString();
-    const stmt = db.prepare('DELETE FROM membros WHERE dataRegistro < ?');
-    const result = stmt.run(sevenDaysAgo);
-    if (result.changes > 0) {
-        console.log(`[REGISTRO] ${result.changes} registros antigos (mais de 7 dias) foram removidos do banco de dados de membros.`);
+    if (recordsRemoved) {
+        await saveMembrosDB();
+        console.log('[REGISTRO] Registros antigos (mais de 7 dias) foram removidos do banco de dados de membros.');
     }
 }
 
@@ -210,7 +193,7 @@ function createApprovedEmbed(registro, member, cargo, staff) {
         )
         .setTimestamp()
         .setFooter({ text: 'STATUS DO REGISTRO: ACEITO' });
-
+        
     return embed;
 }
 
@@ -238,7 +221,7 @@ function createDeniedEmbed(registro, member, motivo, staff) {
         )
         .setTimestamp()
         .setFooter({ text: 'STATUS DO REGISTRO: NEGADO' });
-
+        
     return embed;
 }
 
@@ -248,10 +231,10 @@ function createDeniedEmbed(registro, member, motivo, staff) {
  */
 function setup(client) {
     client.once('ready', async () => {
-        const loaded = await loadAndInitializeDB();
+        const loaded = await loadFiles();
         if (loaded) {
             await setupPanel(client);
-            clearOldRecords();
+            await clearOldRecords();
         }
     });
 
@@ -269,7 +252,7 @@ function setup(client) {
     client.on('interactionCreate', async interaction => {
         if (interaction.isButton() && interaction.customId === 'registro_btn') {
             const member = interaction.member;
-
+            
             if (!member.roles.cache.has(configIDs.REGISTRO_PENDENTE_ROLE_ID)) {
                 return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', ephemeral: true });
             }
@@ -277,7 +260,7 @@ function setup(client) {
             const modal = new ModalBuilder()
                 .setCustomId('registro_modal')
                 .setTitle('Faça seu Registro');
-
+            
             const nomeSobrenomeInput = new TextInputBuilder()
                 .setCustomId('nomeSobrenome')
                 .setLabel('Nome e Sobrenome')
@@ -298,7 +281,7 @@ function setup(client) {
                 .setPlaceholder('Ex: 000-000')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
-
+            
             const recrutadorInput = new TextInputBuilder()
                 .setCustomId('recrutador')
                 .setLabel('Recrutador')
@@ -347,22 +330,22 @@ function setup(client) {
                     new ButtonBuilder().setCustomId(`aprovar_${member.id}`).setLabel('Aprovar Registro').setEmoji('1403203942573150362').setStyle(ButtonStyle.Success),
                     new ButtonBuilder().setCustomId(`negar_${member.id}`).setLabel('Negar Registro').setEmoji('1403204560058585138').setStyle(ButtonStyle.Danger)
                 );
-
+            
             const message = await pendingChannel.send({
                 content: `<a:info:1402749673076166810> | Registro recebido de: <@${member.id}>\n<:Russia:1403568543622238238> | <@&${configIDs.RESPONSAVEL_REGISTRO_ROLE_ID}>`,
                 embeds: [embed],
                 components: [buttonsRow]
             });
 
-            registroData.messageId = message.id;
-            saveRegistroPendente(registroData);
+            registrosPendentes[member.id] = { ...registroData, messageId: message.id };
+            await saveRegistros();
 
             await interaction.editReply({ content: `<a:info:1402749673076166810> Olá <@${member.id}>, seu registro foi enviado para Análise.` });
         }
 
         if (interaction.isButton() && (interaction.customId.startsWith('aprovar_') || interaction.customId.startsWith('negar_'))) {
             const userId = interaction.customId.split('_')[1];
-            const registro = getRegistroPendente(userId);
+            const registro = registrosPendentes[userId];
             const isAprovar = interaction.customId.startsWith('aprovar_');
 
             if (!registro) {
@@ -377,15 +360,15 @@ function setup(client) {
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId(`select_role_${userId}`)
                     .setPlaceholder('Selecione o cargo do membro');
-
+                
                 const rolesOptions = configIDs.roles.slice(0, 25).map(role => new StringSelectMenuOptionBuilder()
                     .setLabel(role.name)
                     .setValue(role.id));
-
+                
                 selectMenu.addOptions(rolesOptions);
 
                 const row = new ActionRowBuilder().addComponents(selectMenu);
-
+                
                 await interaction.reply({ content: 'Selecione o cargo do membro:', components: [row], ephemeral: true });
             } else {
                 const modal = new ModalBuilder()
@@ -408,7 +391,7 @@ function setup(client) {
 
             const userId = interaction.customId.split('_')[2];
             const cargoId = interaction.values[0];
-            const registro = getRegistroPendente(userId);
+            const registro = registrosPendentes[userId];
 
             if (!registro) {
                 return interaction.editReply('Este registro não existe ou já foi processado.');
@@ -421,7 +404,7 @@ function setup(client) {
 
             const cargo = interaction.guild.roles.cache.get(cargoId);
             const memberRole = interaction.guild.roles.cache.get(configIDs.RUSSIAN_MEMBER_ROLE_ID);
-
+            
             if (!cargo || !memberRole) {
                 return interaction.editReply('Um dos cargos não foi encontrado.');
             }
@@ -434,41 +417,46 @@ function setup(client) {
 
             await member.setNickname(newNick).catch(() => {});
 
-            saveMembro({
-                userId: registro.userId,
+            // CÓDIGO CORRIGIDO
+            // Garante que membrosDB[userId] é um array antes de usar .push()
+            if (!membrosDB[userId] || !Array.isArray(membrosDB[userId])) {
+                membrosDB[userId] = [];
+            }
+            membrosDB[userId].push({
                 nomeSobrenome: registro.nomeSobrenome,
                 rg: registro.rg,
                 cargoId: cargoId,
                 dataRegistro: new Date().toISOString()
             });
-
-            clearOldRecords();
+            await saveMembrosDB();
+            await clearOldRecords();
 
             const pendingChannel = interaction.guild.channels.cache.get(configIDs.PENDING_REGISTRATIONS_CHANNEL_ID);
             const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
             const approvedEmbed = createApprovedEmbed(registro, member, cargo, interaction.user);
-
+            
             await pendingMessage.edit({
                 content: `<a:info:1402749673076166810> | Registro recebido de: <@${userId}>\n<:Russia:1403568543622238238> | <@&${configIDs.RESPONSAVEL_REGISTRO_ROLE_ID}>`,
                 embeds: [approvedEmbed],
                 components: []
             });
 
-            deleteRegistroPendente(userId);
+            delete registrosPendentes[userId];
+            await saveRegistros();
 
             await interaction.editReply({ content: '<a:positivo:1402749751056797707> Registro aprovado com sucesso!', components: [] });
         }
-
+        
         if (interaction.isModalSubmit() && interaction.customId.startsWith('negar_modal_')) {
             await interaction.deferReply({ ephemeral: true });
             const userId = interaction.customId.split('_')[2];
-            const registro = getRegistroPendente(userId);
+            const registro = registrosPendentes[userId];
             const motivo = interaction.fields.getTextInputValue('motivo');
 
             if (!registro) {
                 return interaction.editReply('Este registro não existe ou já foi processado.');
             }
-
+            
             const member = await interaction.guild.members.fetch(userId).catch(() => null);
             if (!member) {
                 return interaction.editReply('Membro não encontrado.');
@@ -477,15 +465,18 @@ function setup(client) {
             const pendingChannel = interaction.guild.channels.cache.get(configIDs.PENDING_REGISTRATIONS_CHANNEL_ID);
             const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
             const deniedEmbed = createDeniedEmbed(registro, member, motivo, interaction.user);
-
+            
+            // Deleta a mensagem do canal de registros pendentes
             await pendingMessage.delete();
 
+            // Envia a embed de registro negado para o canal de logs
             const deniedLogsChannel = interaction.guild.channels.cache.get(configIDs.DENIED_LOGS_CHANNEL_ID);
             if (deniedLogsChannel) {
                 await deniedLogsChannel.send({ embeds: [deniedEmbed] });
             }
 
-            deleteRegistroPendente(userId);
+            delete registrosPendentes[userId];
+            await saveRegistros();
 
             await interaction.editReply('<a:negativo:1402749793553350806> Registro negado com sucesso!');
         }
