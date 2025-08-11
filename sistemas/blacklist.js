@@ -8,7 +8,6 @@ const {
     TextInputBuilder,
     TextInputStyle,
     StringSelectMenuBuilder,
-    InteractionResponseFlags
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -201,7 +200,8 @@ module.exports = (client) => {
                 await interaction.showModal(modal);
 
             } else if (interaction.customId === 'blacklist_remove') {
-                await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+                // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+                await interaction.deferReply({ ephemeral: true });
 
                 const currentBlacklist = loadBlacklist();
                 if (currentBlacklist.length === 0) {
@@ -229,7 +229,8 @@ module.exports = (client) => {
 
         // Manipulador para o modal de adicionar blacklist
         if (interaction.isModalSubmit() && interaction.customId === 'blacklist_add_modal') {
-             await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+             // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+             await interaction.deferReply({ ephemeral: true });
             
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
                 return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.` });
@@ -257,7 +258,8 @@ module.exports = (client) => {
 
         // Manipulador para o menu de seleção de remoção
         if (interaction.isStringSelectMenu() && interaction.customId === 'blacklist_remove_select') {
-             await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+             // CORREÇÃO: `flags: InteractionResponseFlags.Ephemeral` foi alterado para `ephemeral: true`.
+             await interaction.deferReply({ ephemeral: true });
 
              if (interaction.member && !interaction.member.roles.cache.has(BLACKLIST_ROLE_ID)) {
                 return interaction.editReply({ content: `Somente <@&${BLACKLIST_ROLE_ID}> podem mexer na Blacklist.` });

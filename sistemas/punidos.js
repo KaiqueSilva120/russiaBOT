@@ -462,7 +462,7 @@ module.exports = (client) => {
             if (!interaction.member.roles.cache.has(RESPONSIBLE_ROLE_ID)) {
                 return interaction.reply({
                     content: `<:ban:1403120687329181698> Painel permitido apenas para <@&${RESPONSIBLE_ROLE_ID}>!!!`,
-                    flags: InteractionResponseFlags.Ephemeral
+                    ephemeral: true
                 });
             }
         }
@@ -472,7 +472,7 @@ module.exports = (client) => {
             if (!interaction.member.roles.cache.has(RESPONSIBLE_ROLE_ID)) {
                 return interaction.reply({
                     content: `<:ban:1403120687329181698> Painel permitido apenas para <@&${RESPONSIBLE_ROLE_ID}>!!!`,
-                    flags: InteractionResponseFlags.Ephemeral
+                    ephemeral: true
                 });
             }
         }
@@ -521,7 +521,7 @@ module.exports = (client) => {
                 });
 
                 if (removablePunishments.length === 0) {
-                    await interaction.reply({ content: 'Não há punições removíveis ativas no momento (Punições de Exoneração não podem ser removidas por este painel).', flags: InteractionResponseFlags.Ephemeral });
+                    await interaction.reply({ content: 'Não há punições removíveis ativas no momento (Punições de Exoneração não podem ser removidas por este painel).', ephemeral: true });
                     return;
                 }
 
@@ -540,7 +540,7 @@ module.exports = (client) => {
                 await interaction.reply({
                     content: 'Selecione a punição que deseja remover (Punições de Exoneração não aparecem aqui):',
                     components: [row],
-                    flags: InteractionResponseFlags.Ephemeral,
+                    ephemeral: true,
                 });
                 return;
             }
@@ -548,7 +548,7 @@ module.exports = (client) => {
 
         if (interaction.isModalSubmit()) {
             if (interaction.customId === 'punish_apply_modal') {
-                await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+                await interaction.deferReply({ ephemeral: true });
 
                 const qraInputContent = interaction.fields.getTextInputValue('punish_qra');
                 const reason = interaction.fields.getTextInputValue('punish_reason');
@@ -563,7 +563,7 @@ module.exports = (client) => {
                 }
 
                 if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageRoles)) {
-                     await interaction.editReply({ content: 'Você não tem permissão para aplicar punições.', flags: InteractionResponseFlags.Ephemeral });
+                     await interaction.editReply({ content: 'Você não tem permissão para aplicar punições.', ephemeral: true });
                      return;
                 }
 
@@ -651,7 +651,7 @@ module.exports = (client) => {
             await interaction.deferUpdate();
 
             if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageRoles)) {
-                 await interaction.followUp({ content: 'Você não tem permissão para remover punições.', flags: InteractionResponseFlags.Ephemeral });
+                 await interaction.followUp({ content: 'Você não tem permissão para remover punições.', ephemeral: true });
                  return;
             }
 
@@ -660,7 +660,7 @@ module.exports = (client) => {
             const punishmentIndex = currentPunishments.findIndex(p => p.id === punishmentIdToRemove);
 
             if (punishmentIndex === -1) {
-                await interaction.followUp({ content: '<:Negativo:1403204560058585138> Punição não encontrada ou já removida.', flags: InteractionResponseFlags.Ephemeral });
+                await interaction.followUp({ content: '<:Negativo:1403204560058585138> Punição não encontrada ou já removida.', ephemeral: true });
                 return;
             }
 
@@ -671,15 +671,15 @@ module.exports = (client) => {
             if (member && member.roles.cache.has(removedPunishment.roleId)) {
                 try {
                     await member.roles.remove(removedPunishment.roleId, 'Punição removida manualmente.');
-                    await interaction.followUp({ content: `<:Positivo:1403203942573150362> Cargo de punição removido de <@${member.id}>.`, flags: InteractionResponseFlags.Ephemeral });
+                    await interaction.followUp({ content: `<:Positivo:1403203942573150362> Cargo de punição removido de <@${member.id}>.`, ephemeral: true });
                 } catch (roleRemoveError) {
                     console.error('Erro ao remover cargo de punição:', roleRemoveError);
-                    await interaction.followUp({ content: '<:remover:1403214664946417664> Punição removida do registro, mas houve um erro ao remover o cargo do membro. Verifique as permissões do bot.', flags: InteractionResponseFlags.Ephemeral });
+                    await interaction.followUp({ content: '<:remover:1403214664946417664> Punição removida do registro, mas houve um erro ao remover o cargo do membro. Verifique as permissões do bot.', ephemeral: true });
                 }
             } else if (member) {
-                await interaction.followUp({ content: `<:adicionar:1403214675872579725> Punição removida do registro, mas o membro não possui mais o cargo de punição.`, flags: InteractionResponseFlags.Ephemeral });
+                await interaction.followUp({ content: `<:adicionar:1403214675872579725> Punição removida do registro, mas o membro não possui mais o cargo de punição.`, ephemeral: true });
             } else {
-                await interaction.followUp({ content: `<:adicionar:1403214675872579725> Punição removida do registro. Membro não encontrado no servidor.`, flags: InteractionResponseFlags.Ephemeral });
+                await interaction.followUp({ content: `<:adicionar:1403214675872579725> Punição removida do registro. Membro não encontrado no servidor.`, ephemeral: true });
             }
 
             if (removedPunishment.logMessageId) {
