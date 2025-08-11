@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionsBitField, InteractionResponseFlags } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -356,8 +356,8 @@ function setup(client) {
 
     client.on('interactionCreate', async interaction => {
         if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_select') {
-            // A CORREÇÃO FOI FEITA AQUI: removido o deferUpdate, pois o showModal já é uma resposta.
-            // Isso evita o erro `InteractionAlreadyReplied` que você tinha antes.
+            // CORREÇÃO: O deferUpdate foi removido pois o showModal já serve como um reconhecimento.
+            // A tentativa de usar ambos causava o erro "Interaction has already been acknowledged."
             const selectedOption = interaction.values[0];
 
             const modal = new ModalBuilder()
@@ -384,7 +384,8 @@ function setup(client) {
                 interaction.customId === 'remove_member_modal')
             {
                 if (interaction.customId.startsWith('ticket_modal_')) {
-                    // A CORREÇÃO FOI FEITA AQUI: Adicionado deferReply para evitar o erro `InteractionNotReplied`
+                    // CORREÇÃO: Foi adicionado interaction.deferReply() para evitar que a interação expire
+                    // antes que o canal seja criado, o que poderia gerar o erro "Interaction not replied".
                     await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
 
                     const ticketType = interaction.customId.replace('ticket_modal_', '');

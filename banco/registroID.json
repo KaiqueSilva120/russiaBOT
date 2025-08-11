@@ -6,6 +6,7 @@
     "RESPONSAVEL_REGISTRO_ROLE_ID": "1354891917242011929",
     "GUILD_ID": "1354890930746036516",
     "RELATORIO_MEMBROS_CHANNEL_ID": "1404163287490236417",
+    "DENIED_LOGS_CHANNEL_ID": "1354976573282848889",
     "roles": [
         { "id": "1382726991433695374", "name": "Patrão", "simplified": "PTR" },
         { "id": "1375935972986060871", "name": "Braço Direito", "simplified": "BD" },

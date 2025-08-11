@@ -254,7 +254,7 @@ function setup(client) {
             const member = interaction.member;
             
             if (!member.roles.cache.has(configIDs.REGISTRO_PENDENTE_ROLE_ID)) {
-                return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: 'Você não tem permissão para realizar o registro. O cargo de <@&1354976408090185809> é necessário.', ephemeral: true });
             }
 
             const modal = new ModalBuilder()
@@ -300,7 +300,7 @@ function setup(client) {
         }
 
         if (interaction.isModalSubmit() && interaction.customId === 'registro_modal') {
-            await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+            await interaction.deferReply({ ephemeral: true });
             const member = interaction.member;
             const guild = interaction.guild;
 
@@ -349,11 +349,11 @@ function setup(client) {
             const isAprovar = interaction.customId.startsWith('aprovar_');
 
             if (!registro) {
-                return interaction.reply({ content: 'Este registro não existe ou já foi processado.', flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: 'Este registro não existe ou já foi processado.', ephemeral: true });
             }
 
             if (!interaction.member.roles.cache.has(configIDs.RESPONSAVEL_REGISTRO_ROLE_ID)) {
-                return interaction.reply({ content: 'Você não tem permissão para aprovar ou negar registros.', flags: InteractionResponseFlags.Ephemeral });
+                return interaction.reply({ content: 'Você não tem permissão para aprovar ou negar registros.', ephemeral: true });
             }
 
             if (isAprovar) {
@@ -369,7 +369,7 @@ function setup(client) {
 
                 const row = new ActionRowBuilder().addComponents(selectMenu);
                 
-                await interaction.reply({ content: 'Selecione o cargo do membro:', components: [row], flags: 64 });
+                await interaction.reply({ content: 'Selecione o cargo do membro:', components: [row], ephemeral: true });
             } else {
                 const modal = new ModalBuilder()
                     .setCustomId(`negar_modal_${userId}`)
@@ -448,7 +448,7 @@ function setup(client) {
         }
         
         if (interaction.isModalSubmit() && interaction.customId.startsWith('negar_modal_')) {
-            await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+            await interaction.deferReply({ ephemeral: true });
             const userId = interaction.customId.split('_')[2];
             const registro = registrosPendentes[userId];
             const motivo = interaction.fields.getTextInputValue('motivo');
@@ -466,11 +466,14 @@ function setup(client) {
             const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
             const deniedEmbed = createDeniedEmbed(registro, member, motivo, interaction.user);
             
-            await pendingMessage.edit({
-                content: `<a:info:1402749673076166810> | Registro recebido de: <@${userId}>\n<:Russia:1403568543622238238> | <@&${configIDs.RESPONSAVEL_REGISTRO_ROLE_ID}>`,
-                embeds: [deniedEmbed],
-                components: []
-            });
+            // Deleta a mensagem do canal de registros pendentes
+            await pendingMessage.delete();
+
+            // Envia a embed de registro negado para o canal de logs
+            const deniedLogsChannel = interaction.guild.channels.cache.get(configIDs.DENIED_LOGS_CHANNEL_ID);
+            if (deniedLogsChannel) {
+                await deniedLogsChannel.send({ embeds: [deniedEmbed] });
+            }
 
             delete registrosPendentes[userId];
             await saveRegistros();
