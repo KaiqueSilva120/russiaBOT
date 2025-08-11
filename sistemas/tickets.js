@@ -6,19 +6,59 @@ const path = require('node:path');
 const GUILD_ID = '1354890930746036516'; // ID do seu servidor
 const ATENDIMENTO_CHANNEL_ID = '1403594145393545337';
 const CATEGORIA_TICKET_ID = '1383892559713140857';
-const GESTAO_ROLE_ID = '1354891875844100278'; // ID do cargo da equipe de gestão (CORRIGIDO: Removido o '<')
+const GESTAO_ROLE_ID = '1354891875844100278';
 const LOG_CHANNEL_ID = '1383886201454460980';
 
-// Caminhos para os arquivos de dados
-const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
-const TICKETS_FILE = path.join(BANCO_DIR, 'tickets.json');
-const CONFIG_FILE = path.join(BANCO_DIR, 'config.json');
+// --- Funções de Persistência (JSON) ---
+const configPath = path.join(__dirname, 'config.json');
+const ticketsPath = path.join(__dirname, 'tickets.json');
 
-// --- Variáveis Globais ---
+let config = {};
 let tickets = {};
-let config = {
-    fixed_message_id: null
-};
+
+function loadConfig() {
+    try {
+        if (fs.existsSync(configPath)) {
+            const data = fs.readFileSync(configPath, 'utf8');
+            config = JSON.parse(data);
+        } else {
+            console.log('[PERSISTENCIA] Arquivo config.json não encontrado. Criando um novo...');
+            saveConfig();
+        }
+    } catch (e) {
+        console.error('[PERSISTENCIA] Erro ao carregar config.json:', e);
+    }
+}
+
+function saveConfig() {
+    try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[PERSISTENCIA] Erro ao salvar config.json:', e);
+    }
+}
+
+function loadTickets() {
+    try {
+        if (fs.existsSync(ticketsPath)) {
+            const data = fs.readFileSync(ticketsPath, 'utf8');
+            tickets = JSON.parse(data);
+        } else {
+            console.log('[PERSISTENCIA] Arquivo tickets.json não encontrado. Criando um novo...');
+            saveTickets();
+        }
+    } catch (e) {
+        console.error('[PERSISTENCIA] Erro ao carregar tickets.json:', e);
+    }
+}
+
+function saveTickets() {
+    try {
+        fs.writeFileSync(ticketsPath, JSON.stringify(tickets, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[PERSISTENCIA] Erro ao salvar tickets.json:', e);
+    }
+}
 
 // --- Funções Auxiliares ---
 
@@ -37,72 +77,6 @@ function formatTicketType(type) {
                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                .join(' ');
 }
-
-/**
- * Carrega os tickets existentes do arquivo JSON.
- */
-function loadTickets() {
-    try {
-        if (!fs.existsSync(BANCO_DIR)) {
-            fs.mkdirSync(BANCO_DIR, { recursive: true });
-        }
-        if (fs.existsSync(TICKETS_FILE)) {
-            tickets = JSON.parse(fs.readFileSync(TICKETS_FILE, 'utf8'));
-            console.log('[SISTEMA DE TICKETS] Tickets carregados do arquivo.');
-        } else {
-            console.log('[SISTEMA DE TICKETS] Arquivo de tickets não encontrado, iniciando com tickets vazios.');
-            saveTickets();
-        }
-    } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao carregar tickets do arquivo:', error);
-        tickets = {};
-    }
-}
-
-/**
- * Salva o estado atual dos tickets no arquivo JSON.
- */
-function saveTickets() {
-    try {
-        fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
-        console.log('[SISTEMA DE TICKETS] Tickets salvos no arquivo.');
-    } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao salvar tickets no arquivo:', error);
-    }
-}
-
-/**
- * Carrega a configuração do arquivo JSON.
- */
-function loadConfig() {
-    try {
-        if (!fs.existsSync(BANCO_DIR)) {
-            fs.mkdirSync(BANCO_DIR, { recursive: true });
-        }
-        if (fs.existsSync(CONFIG_FILE)) {
-            config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) };
-            console.log('[SISTEMA DE TICKETS] Configurações carregadas do arquivo.');
-        } else {
-            console.log('[SISTEMA DE TICKETS] Arquivo de configuração não encontrado, iniciando com valores padrão.');
-            saveConfig();
-        }
-    } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao carregar as configurações:', error);
-    }
-}
-
-/**
- * Salva a configuração no arquivo JSON.
- */
-function saveConfig() {
-    try {
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
-        console.log('[SISTEMA DE TICKETS] Configurações salvas no arquivo.');
-    } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao salvar as configurações:', error);
-    }
-}
-
 
 /**
  * Gera o conteúdo HTML para a transcrição do ticket.
@@ -295,6 +269,9 @@ async function closeTicket(channel, ticketInfo, closerMember, closeReason = null
  * @param {Client} client - A instância do cliente Discord.
  */
 function setup(client) {
+    loadConfig();
+    loadTickets();
+
     if (!client.options.intents.has(GatewayIntentBits.DirectMessages)) {
         client.options.intents.add(GatewayIntentBits.DirectMessages);
     }
@@ -308,56 +285,53 @@ function setup(client) {
         client.options.partials.push(Partials.User);
     }
 
-    loadTickets();
-    loadConfig();
-
     client.once('ready', async () => {
         console.log(`[SISTEMA DE TICKETS] Iniciado para ${client.user.tag}!`);
         const channel = await client.channels.fetch(ATENDIMENTO_CHANNEL_ID).catch(() => null);
         if (!channel) return console.error('[SISTEMA DE TICKETS] Canal de atendimento não encontrado. Verifique o ID.');
 
-        // Se o ID da mensagem já está salvo, tenta buscá-la diretamente
+        // 1. Tenta buscar a mensagem fixa pelo ID salvo no config.json
         if (config.fixed_message_id) {
             try {
                 const message = await channel.messages.fetch(config.fixed_message_id);
                 if (message) {
                     console.log('[SISTEMA DE TICKETS] Mensagem fixa de atendimento já existe. Não farei nada.');
-                    return;
+                    return; // Sai da função, a mensagem existe.
                 }
             } catch (error) {
-                // Mensagem não encontrada, provavelmente foi excluída. Vamos enviar uma nova.
                 console.log('[SISTEMA DE TICKETS] Mensagem fixa de atendimento não encontrada (ID salvo, mas mensagem deletada). Enviando uma nova...');
-                const newMessage = await sendAtendimentoMessage(channel, client);
-                config.fixed_message_id = newMessage.id;
-                saveConfig();
-                return;
+                // Continua para o próximo bloco para enviar uma nova mensagem
             }
         }
         
-        // Se não houver ID salvo, procura a mensagem no canal (limitando a busca para evitar flood)
-        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-        const fixedMessage = messages ? messages.find(msg =>
-            msg.author.id === client.user.id &&
-            msg.embeds.length > 0 &&
-            msg.embeds[0].title === '<:ticket:1403190480480764008> Central de Atendimento – Rússia'
-        ) : null;
+        // 2. Se a mensagem não foi encontrada pelo ID (ou o ID não existe), envia uma nova.
+        console.log('[SISTEMA DE TICKETS] Mensagem fixa não encontrada. Enviando uma nova...');
+        try {
+            // Limpa mensagens antigas para evitar poluição visual
+            const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+            if (messages) {
+                const botMessages = messages.filter(msg =>
+                    msg.author.id === client.user.id &&
+                    msg.embeds.length > 0 &&
+                    msg.embeds[0].title.includes('Central de Atendimento')
+                );
+                if (botMessages.size > 0) {
+                    await channel.bulkDelete(botMessages, true).catch(e => console.error("Erro ao deletar mensagens antigas:", e));
+                }
+            }
 
-        if (fixedMessage) {
-            console.log('[SISTEMA DE TICKETS] Mensagem fixa de atendimento encontrada. Salvando ID...');
-            config.fixed_message_id = fixedMessage.id;
-            saveConfig();
-        } else {
-            console.log('[SISTEMA DE TICKETS] Mensagem fixa de atendimento não encontrada. Enviando...');
             const newMessage = await sendAtendimentoMessage(channel, client);
             config.fixed_message_id = newMessage.id;
             saveConfig();
+            console.log('[SISTEMA DE TICKETS] Nova mensagem fixa de atendimento enviada e ID salvo.');
+
+        } catch (e) {
+            console.error('[SISTEMA DE TICKETS] Erro ao enviar a nova mensagem fixa:', e);
         }
     });
 
     client.on('interactionCreate', async interaction => {
         if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_select') {
-            // CORREÇÃO: O deferUpdate foi removido pois o showModal já serve como um reconhecimento.
-            // A tentativa de usar ambos causava o erro "Interaction has already been acknowledged."
             const selectedOption = interaction.values[0];
 
             const modal = new ModalBuilder()
@@ -384,8 +358,6 @@ function setup(client) {
                 interaction.customId === 'remove_member_modal')
             {
                 if (interaction.customId.startsWith('ticket_modal_')) {
-                    // CORREÇÃO: Foi adicionado interaction.deferReply() para evitar que a interação expire
-                    // antes que o canal seja criado, o que poderia gerar o erro "Interaction not replied".
                     await interaction.deferReply({ ephemeral: true });
 
                     const ticketType = interaction.customId.replace('ticket_modal_', '');
@@ -454,7 +426,6 @@ function setup(client) {
 
                     } catch (error) {
                         console.error('[SISTEMA DE TICKETS] Erro ao abrir o ticket:', error);
-                        // Se o deferReply já foi feito, use followUp para o erro
                         await interaction.followUp({ content: 'Ocorreu um erro ao abrir seu ticket. Tente novamente mais tarde.', ephemeral: true });
                     }
                 } else if (interaction.customId === 'close_ticket_reason_modal') {
