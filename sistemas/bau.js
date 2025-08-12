@@ -2,30 +2,32 @@ const { SlashCommandBuilder, EmbedBuilder, ModalBuilder, TextInputBuilder, Actio
 const fs = require('fs');
 const path = require('path');
 const stringSimilarity = require('string-similarity');
+const connectToDatabase = require('../database');
+const Bau = require('../models/Bau');
+const Movimentacao = require('../models/Movimentacao');
 
 module.exports = (client) => {
+    // Conecta ao banco de dados ao iniciar
+    connectToDatabase();
+
     // Caminhos dos arquivos JSON
     const dataPath = path.join(__dirname, '../data');
-    const bauFilePath = path.join(dataPath, 'bau.json');
-    const movimentacoesFilePath = path.join(dataPath, 'movimentacoes.json');
     const itensValidosFilePath = path.join(dataPath, 'itensValidos.json');
 
     // IDs dos canais
     const BAU_CHANNEL_ID = '1403592583539720262';
-    const LOGS_CHANNEL_ID = '1403592668168065145';
+    const LOGS_CHANNEL_ID = '1376578456732696668';
     const BOT_LOG_CHANNEL_ID = '1403603952234397728';
 
     // ID da role de Responsável pelo Baú
     const RESPONSAVEL_BAU_ROLE_ID = '1354892378757922877';
 
-    // Funções para ler e salvar arquivos JSON
+    // Funções para ler arquivos JSON (somente para itens válidos)
     function readJSON(filePath) {
         try {
             if (!fs.existsSync(filePath)) {
                 if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath);
-                
-                // Nova estrutura de dados conforme solicitado
-                const initialData = filePath === itensValidosFilePath ? {
+                const initialData = {
                     "armas": [
                         { "name": "ak 47", "aliases": ["ak", "ak-47", "ak47"] },
                         { "name": "five seven", "aliases": ["five-seven", "five", "pistola"] },
@@ -57,26 +59,17 @@ module.exports = (client) => {
                         { "name": "cachorro quente", "aliases": ["hot dog"] },
                         { "name": "água", "aliases": ["agua", "Água"] }
                     ]
-                } : (filePath === movimentacoesFilePath ? [] : {});
+                };
                 fs.writeFileSync(filePath, JSON.stringify(initialData, null, 2), 'utf8');
                 return initialData;
             }
             return JSON.parse(fs.readFileSync(filePath, 'utf8'));
         } catch (error) {
             console.error(`Erro ao ler o arquivo JSON ${filePath}:`, error);
-            return filePath === movimentacoesFilePath ? [] : {};
+            return {};
         }
     }
 
-    function saveJSON(filePath, data) {
-        try {
-            if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath);
-            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-        } catch (error) {
-            console.error(`Erro ao salvar o arquivo JSON ${filePath}:`, error);
-        }
-    }
-    
     // Função para encontrar o nome principal do item a partir de um alias
     function findMainItemName(itemName, itensValidos) {
         for (const categoria in itensValidos) {
@@ -110,54 +103,53 @@ module.exports = (client) => {
                 return interaction.reply({ content: `Item não encontrado! O item '${itemName}' não foi encontrado na lista de itens válidos, se vc acha que deveria estar na lista, peço que abra um ticket e nos informe.`, ephemeral: true });
             }
         }
-
-        const bauData = readJSON(bauFilePath);
-        const movimentacoes = readJSON(movimentacoesFilePath);
         
-        if (!bauData[mainItemName]) {
-            bauData[mainItemName] = { added: 0, removed: 0 };
-        }
+        // Lógica de manipulação do banco de dados
+        try {
+            const update = actionType === 'adicionou' 
+                ? { $inc: { added: quantity } }
+                : { $inc: { removed: quantity } };
+            
+            const bauItem = await Bau.findOneAndUpdate(
+                { itemName: mainItemName },
+                update,
+                { new: true, upsert: true } // Cria se não existir
+            );
 
-        if (actionType === 'adicionou') {
-            bauData[mainItemName].added = (bauData[mainItemName].added || 0) + quantity;
-        } else {
-            bauData[mainItemName].removed = (bauData[mainItemName].removed || 0) + quantity;
-        }
-        
-        saveJSON(bauFilePath, bauData);
+            const logEntry = await Movimentacao.create({
+                userId: interaction.user.id,
+                username: interaction.user.username,
+                rg: rg,
+                item: mainItemName,
+                quantity: quantity,
+                actionType: actionType,
+            });
 
-        const logEntry = {
-            userId: interaction.user.id,
-            username: interaction.user.username,
-            rg: rg,
-            item: mainItemName,
-            quantity: quantity,
-            actionType: actionType,
-            timestamp: new Date().toISOString()
-        };
-        movimentacoes.push(logEntry);
-        saveJSON(movimentacoesFilePath, movimentacoes);
+            const logChannel = client.channels.cache.get(LOGS_CHANNEL_ID);
+            if (logChannel) {
+                const embedColor = actionType === 'adicionou' ? 0x00ff00 : 0xff0000;
+                const actionDescription = actionType === 'adicionou' ? `Quantidade Adicionada: **${quantity}**` : `Quantidade Removida: **${quantity}**`;
+                const logEmbed = new EmbedBuilder()
+                    .setTitle(`📦 Movimentação no Baú - ${actionType.toUpperCase()}`)
+                    .setDescription(`> Membro: <@${interaction.user.id}>\n`
+                                  + `> RG: **${rg}**\n`
+                                  + `> Item: **${mainItemName}**\n`
+                                  + `> ${actionDescription}\n`
+                                  + `> Data: **${new Date().toLocaleString('pt-BR')}**`)
+                    .setColor(embedColor)
+                    .setThumbnail(interaction.user.displayAvatarURL())
+                    .setFooter({ 
+                        text: 'Gerenciamento Baú - Rússia', 
+                        icon_url: 'https://cdn.discordapp.com/attachments/1402839271496486943/1403109913890131978/Flag_of_Russia.png?ex=68965b6f&is=689509ef&hm=09d501e8bbb73a9a34275079c050bd6bc01d4a072ca78bdec09a4152e3ca5bc8&' 
+                    });
+                logChannel.send({ embeds: [logEmbed] });
+            }
+            await interaction.reply({ content: `<:Positivo:1403203942573150362> Sucesso! Você ${actionType} ${quantity}x **${mainItemName}** do baú.`, ephemeral: true });
 
-        const logChannel = client.channels.cache.get(LOGS_CHANNEL_ID);
-        if (logChannel) {
-            const embedColor = actionType === 'adicionou' ? 0x00ff00 : 0xff0000;
-            const actionDescription = actionType === 'adicionou' ? `Quantidade Adicionada: **${quantity}**` : `Quantidade Removida: **${quantity}**`;
-            const logEmbed = new EmbedBuilder()
-                .setTitle(`📦 Movimentação no Baú - ${actionType.toUpperCase()}`)
-                .setDescription(`> Membro: <@${interaction.user.id}>\n`
-                              + `> RG: **${rg}**\n`
-                              + `> Item: **${mainItemName}**\n`
-                              + `> ${actionDescription}\n`
-                              + `> Data: **${new Date().toLocaleString('pt-BR')}**`)
-                .setColor(embedColor)
-                .setThumbnail(interaction.user.displayAvatarURL())
-                .setFooter({ 
-                    text: 'Gerenciamento Baú - Rússia', 
-                    icon_url: 'https://cdn.discordapp.com/attachments/1402839271496486943/1403109913890131978/Flag_of_Russia.png?ex=68965b6f&is=689509ef&hm=09d501e8bbb73a9a34275079c050bd6bc01d4a072ca78bdec09a4152e3ca5bc8&' 
-                });
-            logChannel.send({ embeds: [logEmbed] });
+        } catch (error) {
+            console.error('Erro ao registrar movimentação no banco de dados:', error);
+            await interaction.reply({ content: 'Ocorreu um erro ao registrar a movimentação. Por favor, tente novamente mais tarde.', ephemeral: true });
         }
-        await interaction.reply({ content: `<:Positivo:1403203942573150362> Sucesso! Você ${actionType} ${quantity}x **${mainItemName}** do baú.`, ephemeral: true });
     }
 
     // Comandos Slash
@@ -167,7 +159,7 @@ module.exports = (client) => {
                 .setName('bau')
                 .setDescription('Exibe o relatório geral do baú.'),
             async execute(interaction) {
-                const bauData = readJSON(bauFilePath);
+                const bauData = await Bau.find({});
                 const itensValidos = readJSON(itensValidosFilePath);
                 
                 const embed = new EmbedBuilder()
@@ -176,7 +168,7 @@ module.exports = (client) => {
                     .setImage('https://cdn.discordapp.com/attachments/1242690408782495757/1403107191510274129/image.png?ex=689658e6&is=68950766&hm=4e1bcefec2c9b135066a093cf1244b7ace748baa0f1d57d2e6f6835fc1c1765b&')
                     .setThumbnail(interaction.guild.iconURL());
 
-                let hasItems = false;
+                let hasItems = bauData.length > 0;
                 
                 const categoryNames = {
                     armas: 'Armas/Munições',
@@ -184,25 +176,34 @@ module.exports = (client) => {
                     itens: 'Diversos',
                     comida: 'Comida/Bebida'
                 };
+                
+                const dataByCategory = {};
+                for (const item of bauData) {
+                    const category = Object.keys(itensValidos).find(key => 
+                        itensValidos[key].some(validItem => validItem.name === item.itemName)
+                    );
+                    if (category) {
+                        if (!dataByCategory[category]) dataByCategory[category] = [];
+                        dataByCategory[category].push(item);
+                    }
+                }
 
-                for (const categoriaKey in itensValidos) {
-                    let categoriaItems = '';
-                    for (const item of itensValidos[categoriaKey]) {
-                        const mainItemName = item.name;
-                        if (bauData[mainItemName]) {
-                            hasItems = true;
-                            const { added = 0, removed = 0 } = bauData[mainItemName];
+                for (const categoriaKey in categoryNames) {
+                    if (dataByCategory[categoriaKey]) {
+                        let categoriaItems = '';
+                        for (const item of dataByCategory[categoriaKey]) {
+                            const { itemName, added = 0, removed = 0 } = item;
                             const saldo = added - removed;
                             const resumoEmoji = saldo >= 0 ? '<a:positivo:1402749751056797707>' : '<a:negativo:1402749793553350806>';
                             
-                            categoriaItems += `> **${mainItemName.toUpperCase()}**\n`
+                            categoriaItems += `> **${itemName.toUpperCase()}**\n`
                                             + `> <:adicionar:1403214675872579725> **Adicionados:** ${added}\n`
                                             + `> <:remover:1403214664946417664> **Removidos:** ${removed}\n`
                                             + `> ${resumoEmoji} **Saldo:** ${saldo}\n\n`;
                         }
-                    }
-                    if (categoriaItems) {
-                        embed.addFields({ name: `**${categoryNames[categoriaKey]}**`, value: categoriaItems, inline: false });
+                        if (categoriaItems) {
+                            embed.addFields({ name: `**${categoryNames[categoriaKey]}**`, value: categoriaItems, inline: false });
+                        }
                     }
                 }
                 
@@ -224,12 +225,10 @@ module.exports = (client) => {
             async execute(interaction) {
                 const user = interaction.options.getUser('usuario');
                 const member = interaction.guild.members.cache.get(user.id);
-                const movimentacoes = readJSON(movimentacoesFilePath);
+                const movimentacoes = await Movimentacao.find({ userId: user.id });
                 const itensValidos = readJSON(itensValidosFilePath);
                 
-                const userHistory = movimentacoes.filter(mov => mov.userId === user.id);
-
-                if (userHistory.length === 0) {
+                if (movimentacoes.length === 0) {
                     return interaction.reply({ content: `O usuário ${user.username} não tem movimentações registradas.`, ephemeral: true });
                 }
 
@@ -256,7 +255,7 @@ module.exports = (client) => {
                         icon_url: 'https://cdn.discordapp.com/attachments/1402839271496486943/1403109913890131978/Flag_of_Russia.png?ex=68965b6f&is=689509ef&hm=09d501e8bbb73a9a34275079c050bd6bc01d4a072ca78bdec09a4152e3ca5bc8&' 
                     });
 
-                const summary = userHistory.reduce((acc, mov) => {
+                const summary = movimentacoes.reduce((acc, mov) => {
                     const mainItemName = findMainItemName(mov.item, itensValidos);
                     if (mainItemName) {
                         const category = Object.keys(itensValidos).find(key => 
@@ -328,20 +327,24 @@ module.exports = (client) => {
                 }
 
                 const itemName = interaction.options.getString('item').toLowerCase();
-                const bauData = readJSON(bauFilePath);
+                
+                try {
+                    const result = await Bau.findOneAndDelete({ itemName: itemName });
+                    
+                    if (!result) {
+                        return interaction.reply({ content: `O item '${itemName}' não foi encontrado no baú.`, ephemeral: true });
+                    }
+                    
+                    await interaction.reply({ content: `<:Positivo:1403203942573150362> O saldo do item '${itemName}' foi redefinido com sucesso!` });
 
-                if (!bauData[itemName]) {
-                    return interaction.reply({ content: `O item '${itemName}' não foi encontrado no baú.`, ephemeral: true });
-                }
-
-                delete bauData[itemName];
-                saveJSON(bauFilePath, bauData);
-                await interaction.reply({ content: `<:Positivo:1403203942573150362> O saldo do item '${itemName}' foi redefinido com sucesso!` });
-
-                const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
-                if (logChannel) {
-                    const logMessage = `<:SlashCommands:1402754768702672946> | O item \`${itemName}\` do baú foi redefinido por <@${interaction.user.id}> (local do comando: <#${interaction.channel.id}>).`;
-                    await logChannel.send({ content: logMessage }).catch(console.error);
+                    const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
+                    if (logChannel) {
+                        const logMessage = `<:SlashCommands:1402754768702672946> | O item \`${itemName}\` do baú foi redefinido por <@${interaction.user.id}> (local do comando: <#${interaction.channel.id}>).`;
+                        await logChannel.send({ content: logMessage }).catch(console.error);
+                    }
+                } catch (error) {
+                    console.error('Erro ao redefinir item no banco de dados:', error);
+                    await interaction.reply({ content: 'Ocorreu um erro ao redefinir o item. Por favor, tente novamente mais tarde.', ephemeral: true });
                 }
             }
         },
@@ -353,19 +356,21 @@ module.exports = (client) => {
                 if (!interaction.member.roles.cache.has(RESPONSAVEL_BAU_ROLE_ID)) {
                     return interaction.reply({ content: '<a:c_warningrgbFXP:1403098424689033246> Você não tem permissão para usar este comando, somente <@&1354892378757922877>.', ephemeral: true });
                 }
-
-                const bauData = {};
-                const movimentacoes = [];
                 
-                saveJSON(bauFilePath, bauData);
-                saveJSON(movimentacoesFilePath, movimentacoes);
+                try {
+                    await Bau.deleteMany({});
+                    await Movimentacao.deleteMany({});
+                    
+                    await interaction.reply({ content: '<a:like1:1369644902010458143> O baú e todo o histórico de movimentações foram limpos!!' });
 
-                await interaction.reply({ content: '<a:like1:1369644902010458143> O baú e todo o histórico de movimentações foram limpos!!' });
-
-                const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
-                if (logChannel) {
-                    const logMessage = `<:SlashCommands:1402754768702672946> | O baú foi limpo por <@${interaction.user.id}> (local do comando: <#${interaction.channel.id}>).`;
-                    await logChannel.send({ content: logMessage }).catch(console.error);
+                    const logChannel = client.channels.cache.get(BOT_LOG_CHANNEL_ID);
+                    if (logChannel) {
+                        const logMessage = `<:SlashCommands:1402754768702672946> | O baú foi limpo por <@${interaction.user.id}> (local do comando: <#${interaction.channel.id}>).`;
+                        await logChannel.send({ content: logMessage }).catch(console.error);
+                    }
+                } catch (error) {
+                    console.error('Erro ao resetar o baú no banco de dados:', error);
+                    await interaction.reply({ content: 'Ocorreu um erro ao limpar o baú. Por favor, tente novamente mais tarde.', ephemeral: true });
                 }
             }
         },

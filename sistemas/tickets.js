@@ -329,7 +329,8 @@ function setup(client) {
                     const guild = interaction.guild;
                     const member = interaction.member;
 
-                    const channelName = `${ticketType.toLowerCase().replace(/[^a-z0-9]/g, '')}-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+                    // Alteração aqui para adicionar o prefixo 🎫・ e garantir o nome 'suporte'
+                    const channelName = `🎫・${ticketType.toLowerCase().replace(/[^a-z0-9]/g, '')}-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
                     try {
                         const ticketChannel = await guild.channels.create({
