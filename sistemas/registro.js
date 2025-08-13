@@ -310,19 +310,53 @@ function setup(client) {
             }
 
             if (isAprovar) {
-                const selectMenu = new StringSelectMenuBuilder()
-                    .setCustomId(`select_role_${userId}`)
-                    .setPlaceholder('Selecione o cargo do membro');
-                
-                const rolesOptions = configIDs.roles.slice(0, 25).map(role => new StringSelectMenuOptionBuilder()
-                    .setLabel(role.name)
-                    .setValue(role.id));
-                
-                selectMenu.addOptions(rolesOptions);
+                await interaction.deferReply({ ephemeral: true });
+                const member = await interaction.guild.members.fetch(userId).catch(() => null);
 
-                const row = new ActionRowBuilder().addComponents(selectMenu);
+                if (!member) {
+                    return interaction.editReply('Membro não encontrado.');
+                }
+
+                // Hardcoded role for 'Sub Cria'
+                const cargoId = "1375866775014608999"; 
+                const simplifiedName = "S-Cria";
+                const cargo = interaction.guild.roles.cache.get(cargoId);
+                const memberRole = interaction.guild.roles.cache.get(configIDs.RUSSIAN_MEMBER_ROLE_ID);
+
+                if (!cargo || !memberRole) {
+                    return interaction.editReply('Um dos cargos não foi encontrado.');
+                }
                 
-                await interaction.reply({ content: 'Selecione o cargo do membro:', components: [row], ephemeral: true });
+                await member.roles.remove(configIDs.REGISTRO_PENDENTE_ROLE_ID).catch(() => {});
+                await member.roles.add([cargoId, configIDs.RUSSIAN_MEMBER_ROLE_ID]).catch(() => {});
+
+                const newNick = `「${simplifiedName}」${registro.nomeSobrenome}「${registro.rg}」`;
+
+                await member.setNickname(newNick).catch(() => {});
+
+                // Salva o registro no banco de membros
+                await Membro.create({
+                    userId: registro.userId,
+                    nomeSobrenome: registro.nomeSobrenome,
+                    rg: registro.rg,
+                    cargoId: cargoId,
+                    dataRegistro: new Date()
+                });
+
+                const pendingChannel = interaction.guild.channels.cache.get(configIDs.PENDING_REGISTRATIONS_CHANNEL_ID);
+                const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
+                const approvedEmbed = createApprovedEmbed(registro, member, cargo, interaction.user);
+                
+                await pendingMessage.edit({
+                    content: `<a:info:1402749673076166810> | Registro recebido de: <@${userId}>\n<:Russia:1403568543622238238> | <@&${configIDs.RESPONSAVEL_REGISTRO_ROLE_ID}>`,
+                    embeds: [approvedEmbed],
+                    components: []
+                });
+
+                // Deleta o registro pendente do banco de dados
+                await RegistroPendente.deleteOne({ userId });
+
+                await interaction.editReply({ content: '<a:positivo:1402749751056797707> Registro aprovado com sucesso!', components: [] });
             } else {
                 const modal = new ModalBuilder()
                     .setCustomId(`negar_modal_${userId}`)
@@ -339,62 +373,6 @@ function setup(client) {
             }
         }
 
-        if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_role_')) {
-            await interaction.deferUpdate();
-
-            const userId = interaction.customId.split('_')[2];
-            const cargoId = interaction.values[0];
-            const registro = await RegistroPendente.findOne({ userId });
-
-            if (!registro) {
-                return interaction.editReply('Este registro não existe ou já foi processado.');
-            }
-
-            const member = await interaction.guild.members.fetch(userId).catch(() => null);
-            if (!member) {
-                return interaction.editReply('Membro não encontrado.');
-            }
-
-            const cargo = interaction.guild.roles.cache.get(cargoId);
-            const memberRole = interaction.guild.roles.cache.get(configIDs.RUSSIAN_MEMBER_ROLE_ID);
-            
-            if (!cargo || !memberRole) {
-                return interaction.editReply('Um dos cargos não foi encontrado.');
-            }
-
-            await member.roles.remove(configIDs.REGISTRO_PENDENTE_ROLE_ID).catch(() => {});
-            await member.roles.add([cargoId, configIDs.RUSSIAN_MEMBER_ROLE_ID]).catch(() => {});
-
-            const simplifiedName = configIDs.roles.find(r => r.id === cargoId)?.simplified;
-            const newNick = `「${simplifiedName}」${registro.nomeSobrenome}「${registro.rg}」`;
-
-            await member.setNickname(newNick).catch(() => {});
-
-            // Salva o registro no banco de membros
-            await Membro.create({
-                userId: registro.userId,
-                nomeSobrenome: registro.nomeSobrenome,
-                rg: registro.rg,
-                cargoId: cargoId,
-                dataRegistro: new Date()
-            });
-
-            const pendingChannel = interaction.guild.channels.cache.get(configIDs.PENDING_REGISTRATIONS_CHANNEL_ID);
-            const pendingMessage = await pendingChannel.messages.fetch(registro.messageId);
-            const approvedEmbed = createApprovedEmbed(registro, member, cargo, interaction.user);
-            
-            await pendingMessage.edit({
-                content: `<a:info:1402749673076166810> | Registro recebido de: <@${userId}>\n<:Russia:1403568543622238238> | <@&${configIDs.RESPONSAVEL_REGISTRO_ROLE_ID}>`,
-                embeds: [approvedEmbed],
-                components: []
-            });
-
-            // Deleta o registro pendente do banco de dados
-            await RegistroPendente.deleteOne({ userId });
-
-            await interaction.editReply({ content: '<a:positivo:1402749751056797707> Registro aprovado com sucesso!', components: [] });
-        }
-        
         if (interaction.isModalSubmit() && interaction.customId.startsWith('negar_modal_')) {
             await interaction.deferReply({ ephemeral: true });
             const userId = interaction.customId.split('_')[2];
