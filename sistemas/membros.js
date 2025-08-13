@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DiscordAPIError } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DiscordAPIError, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const path = require('path');
 const connectToDatabase = require('../database');
 const Membro = require('../models/Membro');
@@ -286,6 +286,51 @@ module.exports = (client) => {
         },
     };
 
+    const comandoRemoverRegistro = {
+        data: new SlashCommandBuilder()
+            .setName('remover-registro')
+            .setDescription('Remove um membro da aba de registrados recentemente na lista de /membros.'),
+    
+        async execute(interaction) {
+            await interaction.deferReply({ ephemeral: true });
+    
+            try {
+                await connectToDatabase();
+                const registrosRecentes = await Membro.find({}).sort({ dataRegistro: -1 }).limit(10);
+    
+                if (registrosRecentes.length === 0) {
+                    return interaction.editReply({ content: 'Não há registros recentes para remover.' });
+                }
+    
+                const options = registrosRecentes.map(reg => {
+                    const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
+                    return new StringSelectMenuOptionBuilder()
+                        .setLabel(`${reg.nomeSobrenome} - RG: ${reg.rg}`)
+                        .setDescription(`Registrado em ${dataEntrada}`)
+                        .setValue(reg._id.toString());
+                });
+    
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId('remover_registro_select')
+                    .setPlaceholder('Selecione um membro para remover...')
+                    .addOptions(options);
+    
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+    
+                await interaction.editReply({
+                    content: 'Selecione o membro que você deseja remover da lista de registros recentes:',
+                    components: [row],
+                    ephemeral: true
+                });
+    
+            } catch (error) {
+                console.error('[REMOVER-REGISTRO] Erro ao carregar registros:', error);
+                await interaction.editReply({ content: 'Ocorreu um erro ao tentar carregar os registros. Tente novamente mais tarde.' });
+            }
+        }
+    };
+    
+
     function createBaseEmbed(client, interaction) {
         const dataHoraAtual = new Date();
         const dataFormatada = dataHoraAtual.toLocaleDateString('pt-BR');
@@ -295,7 +340,7 @@ module.exports = (client) => {
             .setTitle('<:Russia:1403568543622238238> CONTROLE DE MEMBROS DA RÚSSIA')
             .setDescription('<a:setabranca:1403599822207979562> Segue abaixo a lista oficial dos membros da Rússia.\n> Os cargos estão listados em ordem hierárquica, mostrando a quantidade e os nomes de cada integrante.\n\n> A Lista é atualizada automaticamente com o comando `/membros`')
             .setColor('Blue')
-            .setImage('https://cdn.discordapp.com/attachments/1402835801741590713/1404170361054167162/MEMRBOS.png?ex=689a370e&is=6898e58e&hm=79f86a304c68fee4624a39a8bd8f71a39638d2d929e59d63abd85c934dd99e28&')
+            .setImage('https://cdn.discordapp.com/attachments/1402835801741590713/1404170361054167162/MEMRBOS.png?ex=689a370e&is=6898e58e&hm=79f86a304c68fee4624a39a8bd8f71a39638d2d929e59d63abd85c93dd99e28&')
             .setThumbnail(client.user.displayAvatarURL())
             .setFooter({
                 text: `Atualizado em ${dataFormatada} às ${horaFormatada} por ${interaction.user.username}`,
@@ -304,180 +349,191 @@ module.exports = (client) => {
     }
 
     client.commands.set(comandoMembros.data.name, comandoMembros);
+    client.commands.set(comandoRemoverRegistro.data.name, comandoRemoverRegistro);
 
-    // Novo manipulador para os botões de paginação
     client.on('interactionCreate', async interaction => {
-        if (!interaction.isButton()) return;
-        
-        // Verifica se a interação do botão pertence ao comando de membros
-        if (interaction.customId.startsWith('prev_page_') || interaction.customId.startsWith('next_page_')) {
-            await interaction.deferUpdate();
+        if (interaction.isButton()) {
+            if (interaction.customId.startsWith('prev_page_') || interaction.customId.startsWith('next_page_')) {
+                await interaction.deferUpdate();
 
-            const customIdParts = interaction.customId.split('_');
-            const action = customIdParts[0];
-            let currentPage = parseInt(customIdParts[2]);
+                const customIdParts = interaction.customId.split('_');
+                const action = customIdParts[0];
+                let currentPage = parseInt(customIdParts[2]);
 
-            // Recria a lista de páginas
-            const pages = [];
-            const guild = interaction.guild;
-            const membrosPorCargo = {};
-            const cargosNome = {};
+                const pages = [];
+                const guild = interaction.guild;
+                const membrosPorCargo = {};
+                const cargosNome = {};
 
-            await guild.members.fetch();
-            await guild.roles.fetch();
+                await guild.members.fetch();
+                await guild.roles.fetch();
 
-            const processedMembers = new Set();
-            cargosIDsHierarquia.forEach(cargoId => {
-                const role = guild.roles.cache.get(cargoId);
-                if (role) {
-                    cargosNome[cargoId] = role.name;
-                    membrosPorCargo[cargoId] = [];
+                const processedMembers = new Set();
+                cargosIDsHierarquia.forEach(cargoId => {
+                    const role = guild.roles.cache.get(cargoId);
+                    if (role) {
+                        cargosNome[cargoId] = role.name;
+                        membrosPorCargo[cargoId] = [];
+                    }
+                });
+
+                for (const cargoId of cargosIDsHierarquia) {
+                    const role = guild.roles.cache.get(cargoId);
+                    if (role) {
+                        guild.members.cache.forEach(member => {
+                            if (!processedMembers.has(member.id) && member.roles.cache.has(cargoId)) {
+                                const nickname = member.nickname || member.user.username;
+                                const match = nickname.match(/「.*?」(.+?)(?:「(\d+)」)?$/);
+                                const nomeFormatado = match ? match[1].trim() : nickname.trim();
+                                const idFormatado = match && match[2] ? ` - ${match[2]}` : '';
+                                membrosPorCargo[cargoId].push(`${nomeFormatado}${idFormatado}`);
+                                processedMembers.add(member.id);
+                            }
+                        });
+                    }
                 }
-            });
 
-            for (const cargoId of cargosIDsHierarquia) {
-                const role = guild.roles.cache.get(cargoId);
-                if (role) {
-                    guild.members.cache.forEach(member => {
-                        if (!processedMembers.has(member.id) && member.roles.cache.has(cargoId)) {
-                            const nickname = member.nickname || member.user.username;
-                            const match = nickname.match(/「.*?」(.+?)(?:「(\d+)」)?$/);
-                            const nomeFormatado = match ? match[1].trim() : nickname.trim();
-                            const idFormatado = match && match[2] ? ` - ${match[2]}` : '';
-                            membrosPorCargo[cargoId].push(`${nomeFormatado}${idFormatado}`);
-                            processedMembers.add(member.id);
-                        }
-                    });
-                }
-            }
+                let currentPageEmbed = createBaseEmbed(client, interaction);
+                let currentFieldCount = 0;
+                const maxFieldsPerPage = 20;
 
-            let currentPageEmbed = createBaseEmbed(client, interaction);
-            let currentFieldCount = 0;
-            const maxFieldsPerPage = 20;
+                for (const cargoId of cargosIDsHierarquia) {
+                    const membros = membrosPorCargo[cargoId];
+                    if (membros && membros.length > 0) {
+                        const totalMembros = membros.length;
+                        const mention = `<@&${cargoId}> (${totalMembros}):\n`;
+                        let membrosTexto = '';
+                        let fieldCountForCargo = 0;
+                        membros.forEach((membro) => {
+                            const novaLinha = membro + '\n';
+                            let totalLength = membrosTexto.length + novaLinha.length;
+                            if (fieldCountForCargo === 0) totalLength += mention.length;
 
-            for (const cargoId of cargosIDsHierarquia) {
-                const membros = membrosPorCargo[cargoId];
-                if (membros && membros.length > 0) {
-                    const totalMembros = membros.length;
-                    const mention = `<@&${cargoId}> (${totalMembros}):\n`;
-                    let membrosTexto = '';
-                    let fieldCountForCargo = 0;
-                    membros.forEach((membro) => {
-                        const novaLinha = membro + '\n';
-                        let totalLength = membrosTexto.length + novaLinha.length;
-                        if (fieldCountForCargo === 0) totalLength += mention.length;
-
-                        if (totalLength > 1024 || (currentFieldCount >= maxFieldsPerPage && fieldCountForCargo === 0)) {
-                            if (currentFieldCount > 0) {
+                            if (totalLength > 1024 || (currentFieldCount >= maxFieldsPerPage && fieldCountForCargo === 0)) {
+                                if (currentFieldCount > 0) {
+                                    pages.push(currentPageEmbed);
+                                    currentPageEmbed = createBaseEmbed(client, interaction);
+                                    currentFieldCount = 0;
+                                }
+                                if (totalLength > 1024) {
+                                    currentPageEmbed.addFields({ name: (fieldCountForCargo === 0) ? `\u200b` : `\u200b`, value: (fieldCountForCargo === 0) ? mention + membrosTexto : membrosTexto });
+                                    currentFieldCount++;
+                                }
+                                membrosTexto = novaLinha;
+                                fieldCountForCargo++;
+                            } else {
+                                membrosTexto += novaLinha;
+                            }
+                        });
+                        if (membrosTexto.length > 0) {
+                            currentPageEmbed.addFields({ name: `\u200b`, value: (fieldCountForCargo === 0) ? mention + membrosTexto : membrosTexto });
+                            currentFieldCount++;
+                            if (currentFieldCount >= maxFieldsPerPage) {
                                 pages.push(currentPageEmbed);
                                 currentPageEmbed = createBaseEmbed(client, interaction);
                                 currentFieldCount = 0;
                             }
-                            if (totalLength > 1024) {
-                                currentPageEmbed.addFields({ name: (fieldCountForCargo === 0) ? `\u200b` : `\u200b`, value: (fieldCountForCargo === 0) ? mention + membrosTexto : membrosTexto });
-                                currentFieldCount++;
-                            }
-                            membrosTexto = novaLinha;
-                            fieldCountForCargo++;
-                        } else {
-                            membrosTexto += novaLinha;
                         }
+                    }
+                }
+
+                if (currentFieldCount > 0) pages.push(currentPageEmbed);
+
+                try {
+                    await connectToDatabase();
+                    const registrosRecentes = await Membro.find({}).sort({ dataRegistro: -1 }).limit(10);
+                    
+                    const recentMembersList = [];
+                    let totalRecentMembers = 0;
+
+                    for (const reg of registrosRecentes) {
+                        const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
+                        recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
+                        totalRecentMembers++;
+                    }
+
+                    if (recentMembersList.length > 0) {
+                        let lastPage = pages[pages.length - 1];
+                        if (!lastPage || lastPage.data.fields.length >= maxFieldsPerPage) {
+                            lastPage = createBaseEmbed(client, interaction);
+                            pages.push(lastPage);
+                        }
+                        const recentMembersText = recentMembersList.join('\n').substring(0, 1024);
+                        lastPage.addFields({ name: `<:ponto:1404150420883898510> Registrados Recentemente (${totalRecentMembers}):`, value: recentMembersText });
+                    }
+                } catch (error) {
+                    console.error('[MEMBROS] Erro ao carregar registros recentes do banco de dados:', error);
+                    if (pages.length > 0) {
+                        pages[pages.length - 1].addFields({ name: 'Erro ao carregar registros recentes', value: 'Não foi possível carregar a lista de registros recentes.' });
+                    }
+                }
+                
+                if (action === 'prev') {
+                    currentPage--;
+                } else if (action === 'next') {
+                    currentPage++;
+                }
+
+                if (currentPage < 0) currentPage = 0;
+                if (currentPage >= pages.length) currentPage = pages.length - 1;
+
+                const getNewRow = (currentPage, totalPages) => {
+                    const prevButton = new ButtonBuilder()
+                        .setCustomId(`prev_page_${currentPage}`)
+                        .setLabel('Anterior')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(currentPage === 0);
+
+                    const nextButton = new ButtonBuilder()
+                        .setCustomId(`next_page_${currentPage}`)
+                        .setLabel('Próximo')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(currentPage === totalPages - 1);
+                    
+                    const pageNumberButton = new ButtonBuilder()
+                        .setCustomId('page_number')
+                        .setLabel(`Página ${currentPage + 1}/${totalPages}`)
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true);
+
+                    return new ActionRowBuilder().addComponents(prevButton, pageNumberButton, nextButton);
+                };
+
+                await interaction.editReply({
+                    embeds: [pages[currentPage]],
+                    components: [getNewRow(currentPage, pages.length)],
+                });
+            }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'remover_registro_select') {
+                await interaction.deferUpdate();
+                
+                const selectedId = interaction.values[0];
+                
+                try {
+                    await connectToDatabase();
+                    const resultado = await Membro.findByIdAndDelete(selectedId);
+                    
+                    if (resultado) {
+                        await interaction.editReply({
+                            content: `O registro de **${resultado.nomeSobrenome} - RG: ${resultado.rg}** foi removido com sucesso.`,
+                            components: [],
+                        });
+                    } else {
+                        await interaction.editReply({
+                            content: 'Não foi possível encontrar o registro para remover. Ele pode já ter sido excluído.',
+                            components: [],
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('[REMOVER-REGISTRO] Erro ao remover registro:', error);
+                    await interaction.editReply({
+                        content: 'Ocorreu um erro ao tentar remover o registro. Tente novamente mais tarde.',
+                        components: [],
                     });
-                    if (membrosTexto.length > 0) {
-                        currentPageEmbed.addFields({ name: `\u200b`, value: (fieldCountForCargo === 0) ? mention + membrosTexto : membrosTexto });
-                        currentFieldCount++;
-                        if (currentFieldCount >= maxFieldsPerPage) {
-                            pages.push(currentPageEmbed);
-                            currentPageEmbed = createBaseEmbed(client, interaction);
-                            currentFieldCount = 0;
-                        }
-                    }
                 }
             }
-
-            if (currentFieldCount > 0) pages.push(currentPageEmbed);
-
-            try {
-                await connectToDatabase();
-                const registrosRecentes = await Membro.find({}).sort({ dataRegistro: -1 }).limit(10);
-                
-                const recentMembersList = [];
-                let totalRecentMembers = 0;
-
-                for (const reg of registrosRecentes) {
-                    const dataEntrada = new Date(reg.dataRegistro).toLocaleDateString('pt-BR');
-                    recentMembersList.push(`${reg.nomeSobrenome} - ${reg.rg} | ${dataEntrada}`);
-                    totalRecentMembers++;
-                }
-
-                if (recentMembersList.length > 0) {
-                    let lastPage = pages[pages.length - 1];
-                    if (!lastPage || lastPage.data.fields.length >= maxFieldsPerPage) {
-                        lastPage = createBaseEmbed(client, interaction);
-                        pages.push(lastPage);
-                    }
-                    const recentMembersText = recentMembersList.join('\n').substring(0, 1024);
-                    lastPage.addFields({ name: `<:ponto:1404150420883898510> Registrados Recentemente (${totalRecentMembers}):`, value: recentMembersText });
-                }
-            } catch (error) {
-                console.error('[MEMBROS] Erro ao carregar registros recentes do banco de dados:', error);
-                if (pages.length > 0) {
-                    pages[pages.length - 1].addFields({ name: 'Erro ao carregar registros recentes', value: 'Não foi possível carregar a lista de registros recentes.' });
-                }
-            }
-            
-            if (action === 'prev') {
-                currentPage--;
-            } else if (action === 'next') {
-                currentPage++;
-            }
-
-            if (currentPage < 0) currentPage = 0;
-            if (currentPage >= pages.length) currentPage = pages.length - 1;
-
-            const getNewRow = (currentPage, totalPages) => {
-                const prevButton = new ButtonBuilder()
-                    .setCustomId(`prev_page_${currentPage}`)
-                    .setLabel('Anterior')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(currentPage === 0);
-
-                const nextButton = new ButtonBuilder()
-                    .setCustomId(`next_page_${currentPage}`)
-                    .setLabel('Próximo')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(currentPage === totalPages - 1);
-                
-                const pageNumberButton = new ButtonBuilder()
-                    .setCustomId('page_number')
-                    .setLabel(`Página ${currentPage + 1}/${totalPages}`)
-                    .setStyle(ButtonStyle.Secondary)
-                    .setDisabled(true);
-
-                return new ActionRowBuilder().addComponents(prevButton, pageNumberButton, nextButton);
-            };
-
-            await interaction.editReply({
-                embeds: [pages[currentPage]],
-                components: [getNewRow(currentPage, pages.length)],
-            });
         }
     });
 };
-
-function createBaseEmbed(client, interaction) {
-    const dataHoraAtual = new Date();
-    const dataFormatada = dataHoraAtual.toLocaleDateString('pt-BR');
-    const horaFormatada = dataHoraAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-    return new EmbedBuilder()
-        .setTitle('<:Russia:1403568543622238238> CONTROLE DE MEMBROS DA RÚSSIA')
-        .setDescription('<a:setabranca:1403599822207979562> Segue abaixo a lista oficial dos membros da Rússia.\n> Os cargos estão listados em ordem hierárquica, mostrando a quantidade e os nomes de cada integrante.\n\n> A Lista é atualizada automaticamente com o comando `/membros`')
-        .setColor('Blue')
-        .setImage('https://cdn.discordapp.com/attachments/1402835801741590713/1404170361054167162/MEMRBOS.png?ex=689a370e&is=6898e58e&hm=79f86a304c68fee4624a39a8bd8f71a39638d2d929e59d63abd85c934dd99e28&')
-        .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({
-            text: `Atualizado em ${dataFormatada} às ${horaFormatada} por ${interaction.user.username}`,
-            iconURL: interaction.user.displayAvatarURL()
-        });
-}
