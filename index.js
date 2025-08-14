@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { Client, Collection, GatewayIntentBits, ActivityType, InteractionResponseFlags } = require('discord.js');
 require('dotenv').config();
-const mongoose = require('mongoose');
 
 // ------------------- EXPRESS (KEEP ALIVE) -------------------
 const express = require('express');
@@ -38,19 +37,6 @@ client.on('error', error => console.error('[DISCORD ERROR]', error));
 client.on('warn', info => console.warn('[DISCORD WARN]', info));
 client.on('shardError', error => console.error('[DISCORD SHARD ERROR]', error));
 client.on('invalidated', () => console.error('[DISCORD] Sessão invalidada!'));
-
-// ------------------- MONGODB -------------------
-async function connectToDatabase() {
-  if (!process.env.MONGO_URI) return console.log('[DATABASE] MONGO_URI não definido!');
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('[DATABASE] Conectado ao MongoDB com sucesso!');
-  } catch (error) {
-    console.error('[DATABASE] Erro ao conectar no MongoDB:', error);
-  }
-}
-
-connectToDatabase();
 
 // ------------------- CARREGAR COMANDOS -------------------
 const slashCommandsPath = path.join(__dirname, 'comandos', 'SlashCommands.js');
@@ -110,12 +96,14 @@ client.once('ready', () => {
   });
 });
 
-// ------------------- LOGIN COM DETECÇÃO DE ERROS -------------------
-if (!process.env.DISCORD_TOKEN) {
-  console.error('[LOGIN] DISCORD_TOKEN não definido!');
-} else {
-  console.log('[LOGIN] Tentando conectar ao Discord...');
-  client.login(process.env.DISCORD_TOKEN).catch(err => {
-    console.error('[LOGIN ERROR]', err);
-  });
-}
+// ------------------- LOGIN COM DELAY PARA RENDER FREE -------------------
+setTimeout(() => {
+  if (!process.env.DISCORD_TOKEN) {
+    console.error('[LOGIN] DISCORD_TOKEN não definido!');
+  } else {
+    console.log('[LOGIN] Tentando conectar ao Discord...');
+    client.login(process.env.DISCORD_TOKEN).catch(err => {
+      console.error('[LOGIN ERROR]', err);
+    });
+  }
+}, 3000); // espera 3 segundos
