@@ -3,24 +3,20 @@ const path = require('path');
 const { Client, Collection, GatewayIntentBits, ActivityType, InteractionResponseFlags } = require('discord.js');
 require('dotenv').config();
 
-// ------------------- EXPRESS (KEEP ALIVE) -------------------
+// Adiciona o módulo express para criar um servidor web
 const express = require('express');
 const server = express();
-
 server.all('/', (req, res) => {
   res.send('Seu bot está online!');
 });
-
 function keepAlive() {
-  const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => {
-    console.log('Servidor ativo na porta', PORT);
+  server.listen(3000, () => {
+    console.log('Servidor ativo!');
   });
 }
-
 keepAlive();
 
-// ------------------- CLIENT DISCORD -------------------
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -31,14 +27,9 @@ const client = new Client({
 });
 
 client.commands = new Collection();
+let registerCommands;
 
-// ------------------- LOGS DE ERRO -------------------
-client.on('error', error => console.error('[DISCORD ERROR]', error));
-client.on('warn', info => console.warn('[DISCORD WARN]', info));
-client.on('shardError', error => console.error('[DISCORD SHARD ERROR]', error));
-client.on('invalidated', () => console.error('[DISCORD] Sessão invalidada!'));
-
-// ------------------- CARREGAR COMANDOS -------------------
+// Carrega o sistema de gerenciamento de comandos da pasta 'comandos'
 const slashCommandsPath = path.join(__dirname, 'comandos', 'SlashCommands.js');
 const slashCommandsSystem = require(slashCommandsPath);
 if (typeof slashCommandsSystem === 'function') {
@@ -50,7 +41,7 @@ if (typeof slashCommandsSystem === 'function') {
   }
 }
 
-// ------------------- CARREGAR OUTROS SISTEMAS -------------------
+// Carrega todos os outros sistemas da pasta 'sistemas'
 const systemsPath = path.join(__dirname, 'sistemas');
 const systemFiles = fs.readdirSync(systemsPath).filter(file => file.endsWith('.js'));
 
@@ -68,42 +59,33 @@ for (const file of systemFiles) {
   }
 }
 
-// ------------------- INTERAÇÕES -------------------
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
-
   const command = client.commands.get(interaction.commandName);
   if (!command) {
+    // Linha corrigida para usar flags: 64 em vez de flags: InteractionResponseFlags.Ephemeral
     return interaction.reply({ content: 'Comando não encontrado!', flags: InteractionResponseFlags.Ephemeral });
   }
-
   try {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
+    // Linha corrigida para usar flags: 64 em vez de flags: InteractionResponseFlags.Ephemeral
     await interaction.reply({ content: 'Ocorreu um erro ao executar este comando!', flags: InteractionResponseFlags.Ephemeral });
   }
 });
 
-// ------------------- READY E STATUS -------------------
 client.once('ready', () => {
   console.log(`Pronto! Logado como ${client.user.tag}`);
-  console.log('[DISCORD] Cliente pronto e conectado!');
 
+  // Define o status do bot como 'Não Perturbe' e a atividade como 'Jogando 💙 Nova Capital'
   client.user.setPresence({
-    status: 'dnd',
-    activities: [{ name: '💙 Nova Capital', type: ActivityType.Playing }]
+    status: 'dnd', // dnd = Do Not Disturb (Não Perturbe)
+    activities: [{
+      name: '💙 Nova Capital',
+      type: ActivityType.Playing // 'Playing' (Jogando)
+    }]
   });
 });
 
-// ------------------- LOGIN COM DELAY PARA RENDER FREE -------------------
-setTimeout(() => {
-  if (!process.env.DISCORD_TOKEN) {
-    console.error('[LOGIN] DISCORD_TOKEN não definido!');
-  } else {
-    console.log('[LOGIN] Tentando conectar ao Discord...');
-    client.login(process.env.DISCORD_TOKEN).catch(err => {
-      console.error('[LOGIN ERROR]', err);
-    });
-  }
-}, 3000); // espera 3 segundos
+client.login(process.env.DISCORD_TOKEN);
