@@ -203,49 +203,40 @@ async function sendAtendimentoMessage(channel, client) {
  */
 async function closeTicket(channel, ticketInfo, closerMember, closeReason = null, client) {
     try {
-        await channel.send('Fechando ticket em 10 segundos...');
+        const owner = await client.users.fetch(ticketInfo.ownerId).catch(() => null);
+        const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
 
-        await channel.permissionOverwrites.edit(ticketInfo.ownerId, {
-            ViewChannel: false
-        });
+        const transcriptContentHtml = await generateTranscriptHtml(ticketInfo, client, closeReason, closerMember.user.tag);
 
-        setTimeout(async () => {
-            const owner = await client.users.fetch(ticketInfo.ownerId).catch(() => null);
-            const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+        const transcriptEmbed = new EmbedBuilder()
+            .setTitle(`<a:low_bot:1402749493551566899> TRANSCRIÇÃO DO TICKET: ${formatTicketType(ticketInfo.type)} - ${owner ? owner.username : 'Desconhecido'}`)
+            .setDescription(
+                `Olá, seu ticket foi encerrado. Abaixo estão os detalhes do atendimento.\n\n` +
+                `<a:fixclandst:1402749610040098908> Tipo de Ticket: ${formatTicketType(ticketInfo.type)}\n` +
+                (closeReason ? `<a:c_warningrgbFXP:1403098424689033246> Motivo: ${closeReason}\n` : '') +
+                `<a:lupa:1403599767501672580> ID do Ticket: \`${channel.id}\`\n` +
+                `<:azul:1403119768806096898> Autor do Ticket: ${owner ? `<@${owner.id}> (${owner.tag})` : 'Desconhecido'}\n` +
+                `<:ban:1403120687329181698> Encerrado Por: <@${closerMember.id}> (${closerMember.user.tag})\n` +
+                `<a:relogio:1403118839557918770> Data e Hora de Encerramento: ${new Date().toLocaleString('pt-BR')}`
+            )
+            .setFooter({ text: `Gerenciamento Tickets - Rússia | ${new Date().toLocaleDateString('pt-BR')}` })
+            .setThumbnail(client.user.displayAvatarURL());
 
-            const transcriptContentHtml = await generateTranscriptHtml(ticketInfo, client, closeReason, closerMember.user.tag);
+        if (logChannel) {
+            await logChannel.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] }).catch(console.error);
+        }
 
-            const transcriptEmbed = new EmbedBuilder()
-                .setTitle(`<a:low_bot:1402749493551566899> TRANSCRIÇÃO DO TICKET: ${formatTicketType(ticketInfo.type)} - ${owner ? owner.username : 'Desconhecido'}`)
-                .setDescription(
-                    `Olá, seu ticket foi encerrado. Abaixo estão os detalhes do atendimento.\n\n` +
-                    `<a:fixclandst:1402749610040098908> Tipo de Ticket: ${formatTicketType(ticketInfo.type)}\n` +
-                    (closeReason ? `<a:c_warningrgbFXP:1403098424689033246> Motivo: ${closeReason}\n` : '') +
-                    `<a:lupa:1403599767501672580> ID do Ticket: \`${channel.id}\`\n` +
-                    `<:azul:1403119768806096898> Autor do Ticket: ${owner ? `<@${owner.id}> (${owner.tag})` : 'Desconhecido'}\n` +
-                    `<:ban:1403120687329181698> Encerrado Por: <@${closerMember.id}> (${closerMember.user.tag})\n` +
-                    `<a:relogio:1403118839557918770> Data e Hora de Encerramento: ${new Date().toLocaleString('pt-BR')}`
-                )
-                .setFooter({ text: `Gerenciamento Tickets - Rússia | ${new Date().toLocaleDateString('pt-BR')}` })
-                .setThumbnail(client.user.displayAvatarURL());
-
-            if (logChannel) {
-                await logChannel.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] }).catch(console.error);
+        if (owner) {
+            try {
+                await owner.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] });
+            } catch (dmError) {
+                console.warn(`[SISTEMA DE TICKETS] Não foi possível enviar a DM para ${owner.tag}:`, dmError);
             }
+        }
 
-            if (owner) {
-                try {
-                    await owner.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] });
-                } catch (dmError) {
-                    console.warn(`[SISTEMA DE TICKETS] Não foi possível enviar a DM para ${owner.tag}:`, dmError);
-                }
-            }
-
-            delete tickets[channel.id];
-            saveTickets();
-            await channel.delete().catch(console.error);
-
-        }, 10000);
+        delete tickets[channel.id];
+        saveTickets();
+        await channel.delete().catch(console.error);
     } catch (error) {
         console.error('[SISTEMA DE TICKETS] Erro ao fechar o ticket:', error);
     }
@@ -257,8 +248,6 @@ async function closeTicket(channel, ticketInfo, closerMember, closeReason = null
  * @param {Client} client - A instância do cliente Discord.
  */
 function setup(client) {
-    // CORREÇÃO: Removido 'DirectMessages' dos intents pois não está sendo usado.
-    // O envio de DM é feito via `client.users.fetch` que não requer esse intent.
     if (!client.options.partials.includes(Partials.Channel)) {
         client.options.partials.push(Partials.Channel);
     }
@@ -268,8 +257,7 @@ function setup(client) {
     if (!client.options.partials.includes(Partials.User)) {
         client.options.partials.push(Partials.User);
     }
-    
-    // As funções loadConfig() e saveConfig() foram removidas
+
     loadTickets();
 
     client.once('ready', async () => {
@@ -277,7 +265,6 @@ function setup(client) {
         const channel = await client.channels.fetch(ATENDIMENTO_CHANNEL_ID).catch(() => null);
         if (!channel) return console.error('[SISTEMA DE TICKETS] Canal de atendimento não encontrado. Verifique o ID.');
 
-        // Procura a mensagem fixa no canal para evitar o "flood"
         const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         const fixedMessage = messages ? messages.find(msg =>
             msg.author.id === client.user.id &&
@@ -329,7 +316,6 @@ function setup(client) {
                     const guild = interaction.guild;
                     const member = interaction.member;
 
-                    // Alteração aqui para adicionar o prefixo 🎫・ e garantir o nome 'suporte'
                     const channelName = `🎫・${ticketType.toLowerCase().replace(/[^a-z0-9]/g, '')}-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
                     try {
@@ -405,7 +391,7 @@ function setup(client) {
                     const ticketInfo = tickets[interaction.channel.id];
                     if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
-                        return interaction.followUp({ content: 'Apenas a equipe pode adicionar membros.', ephemeral: true});
+                        return interaction.followUp({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode adicionar membros.', ephemeral: true});
                     }
 
                     const memberIdentifier = interaction.fields.getTextInputValue('member_id_input');
@@ -444,7 +430,7 @@ function setup(client) {
                     const ticketInfo = tickets[interaction.channel.id];
                     if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
-                        return interaction.followUp({ content: 'Apenas a equipe pode remover membros.', ephemeral: true });
+                        return interaction.followUp({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode remover membros.', ephemeral: true });
                     }
 
                     const memberIdentifier = interaction.fields.getTextInputValue('remove_member_id_input');
@@ -499,13 +485,37 @@ function setup(client) {
 
             switch (customId) {
                 case 'fechar_ticket':
-                    await interaction.deferReply({ ephemeral: true }).catch(e => console.error("Erro ao deferir fechar_ticket:", e));
-                    await closeTicket(channel, ticketInfo, member, null, client);
+                    if (!isStaff) {
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode fechar tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder fechar_ticket:", e));
+                    }
+                    
+                    // Altera as permissões para trancar o ticket
+                    const allOverwrites = channel.permissionOverwrites.cache.filter(ow => ow.id !== GESTAO_ROLE_ID);
+                    for (const ow of allOverwrites.values()) {
+                        await channel.permissionOverwrites.edit(ow.id, { ViewChannel: false }).catch(console.error);
+                    }
+                    
+                    // Envia a mensagem com os botões de Deletar e Reabrir
+                    const lockedEmbed = new EmbedBuilder()
+                        .setTitle('Ticket Trancado')
+                        .setDescription('Ticket trancado. Apenas a equipe <@&1354891875844100278> pode ver este canal.')
+                        .setColor('ff9900'); // Cor de alerta
+
+                    const lockedButtonsRow = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder().setCustomId('deletar_ticket').setLabel('Deletar Ticket').setStyle(ButtonStyle.Danger),
+                            new ButtonBuilder().setCustomId('reabrir_ticket').setLabel('Reabrir Ticket').setStyle(ButtonStyle.Success)
+                        );
+                    
+                    await interaction.reply({
+                        embeds: [lockedEmbed],
+                        components: [lockedButtonsRow]
+                    }).catch(e => console.error("Erro ao responder fechar_ticket:", e));
                     break;
 
                 case 'fechar_ticket_motivo':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode usar este botão.', ephemeral: true }).catch(e => console.error("Erro ao responder botão fechar_ticket_motivo:", e));
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode usar este botão.', ephemeral: true }).catch(e => console.error("Erro ao responder botão fechar_ticket_motivo:", e));
                     }
                     const closeReasonModal = new ModalBuilder()
                         .setCustomId('close_ticket_reason_modal')
@@ -520,10 +530,44 @@ function setup(client) {
                     closeReasonModal.addComponents(new ActionRowBuilder().addComponents(closeReasonInput));
                     await interaction.showModal(closeReasonModal).catch(e => console.error("Erro ao mostrar modal fechar_ticket_motivo:", e));
                     break;
+                
+                case 'deletar_ticket':
+                    if (!isStaff) {
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode deletar tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder deletar_ticket:", e));
+                    }
+                    await interaction.deferUpdate();
+
+                    const deletingEmbed = new EmbedBuilder()
+                        .setDescription('<a:info:1402749673076166810> Transcrevendo e Fechando o ticket....')
+                        .setColor('ff0000'); // Cor vermelha
+
+                    await interaction.editReply({ embeds: [deletingEmbed], components: [] }).catch(e => console.error("Erro ao editar mensagem de deleção:", e));
+
+                    setTimeout(async () => {
+                        await closeTicket(channel, ticketInfo, member, null, client);
+                    }, 5000);
+                    break;
+
+                case 'reabrir_ticket':
+                    if (!isStaff) {
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode reabrir tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder reabrir_ticket:", e));
+                    }
+                    await interaction.deferUpdate();
+                    
+                    // Reabilita o canal para o criador do ticket
+                    await channel.permissionOverwrites.edit(ticketInfo.ownerId, { ViewChannel: true, SendMessages: true });
+                    
+                    const reopenedEmbed = new EmbedBuilder()
+                        .setTitle('Ticket Reaberto')
+                        .setDescription(`O ticket foi reaberto por <@${member.id}>.`)
+                        .setColor('00ff00'); // Cor verde
+                    
+                    await interaction.editReply({ embeds: [reopenedEmbed], components: [] }).catch(e => console.error("Erro ao editar mensagem de reabertura:", e));
+                    break;
 
                 case 'gerenciar_ticket':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode gerenciar tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder botão gerenciar_ticket:", e));
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode gerenciar tickets.', ephemeral: true }).catch(e => console.error("Erro ao responder gerenciar_ticket:", e));
                     }
                     const manageEmbed = new EmbedBuilder()
                         .setTitle('<:ticket:1403190480480764008> Gerencie o ticket com as opções abaixo:');
@@ -567,7 +611,7 @@ function setup(client) {
 
                 case 'adicionar_membro':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode adicionar membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão adicionar_membro:", e));
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode adicionar membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão adicionar_membro:", e));
                     }
                     const addMemberModal = new ModalBuilder()
                         .setCustomId('add_member_modal')
@@ -585,7 +629,7 @@ function setup(client) {
 
                 case 'remover_membro':
                     if (!isStaff) {
-                        return interaction.reply({ content: 'Apenas a equipe pode remover membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão remover_membro:", e));
+                        return interaction.reply({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode remover membros.', ephemeral: true }).catch(e => console.error("Erro ao responder botão remover_membro:", e));
                     }
                     const removeMemberModal = new ModalBuilder()
                         .setCustomId('remove_member_modal')
