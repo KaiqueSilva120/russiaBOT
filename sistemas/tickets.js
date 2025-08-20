@@ -1,20 +1,18 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionsBitField } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const Ticket = require('../models/Ticket'); // Importa o modelo Ticket
+const connectToDatabase = require('../database'); // Importa a função de conexão
+const discordTranscripts = require('discord-html-transcripts');
 
 // --- Configurações Importantes ---
-const GUILD_ID = '1354890930746036516'; // ID do seu servidor
+const GUILD_ID = '1354890930746036516';
 const ATENDIMENTO_CHANNEL_ID = '1404335936262897694';
 const CATEGORIA_TICKET_ID = '1383892559713140857';
-const GESTAO_ROLE_ID = '1354891875844100278'; // ID do cargo da equipe de gestão (CORRIGIDO: Removido o '<')
+const GESTAO_ROLE_ID = '1354891875844100278';
 const LOG_CHANNEL_ID = '1383886201454460980';
 
-// Caminhos para os arquivos de dados
-const BANCO_DIR = path.resolve(__dirname, '..', 'banco');
-const TICKETS_FILE = path.join(BANCO_DIR, 'tickets.json');
-
 // --- Variáveis Globais ---
-let tickets = {};
+// Usaremos um mapa para manter os tickets em cache em memória para acesso rápido
+let ticketsCache = new Map();
 
 // --- Funções Auxiliares ---
 
@@ -35,102 +33,64 @@ function formatTicketType(type) {
 }
 
 /**
- * Carrega os tickets existentes do arquivo JSON.
+ * Carrega os tickets existentes do banco de dados para o cache.
  */
-function loadTickets() {
+async function loadTicketsFromDatabase() {
     try {
-        if (!fs.existsSync(BANCO_DIR)) {
-            fs.mkdirSync(BANCO_DIR, { recursive: true });
-        }
-        if (fs.existsSync(TICKETS_FILE)) {
-            tickets = JSON.parse(fs.readFileSync(TICKETS_FILE, 'utf8'));
-            console.log('[SISTEMA DE TICKETS] Tickets carregados do arquivo.');
-        } else {
-            console.log('[SISTEMA DE TICKETS] Arquivo de tickets não encontrado, iniciando com tickets vazios.');
-            saveTickets();
-        }
+        await connectToDatabase();
+        const ticketsArray = await Ticket.find();
+        ticketsArray.forEach(ticket => {
+            ticketsCache.set(ticket.channelId, ticket);
+        });
+        console.log(`[SISTEMA DE TICKETS] Carregou ${ticketsCache.size} tickets do banco de dados.`);
     } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao carregar tickets do arquivo:', error);
-        tickets = {};
+        console.error('[SISTEMA DE TICKETS] Erro ao carregar tickets do banco de dados:', error);
     }
 }
 
 /**
- * Salva o estado atual dos tickets no arquivo JSON.
+ * Salva um ticket no banco de dados.
+ * @param {object} ticketData - Os dados do ticket.
  */
-function saveTickets() {
+async function saveTicketToDatabase(ticketData) {
     try {
-        fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
-        console.log('[SISTEMA DE TICKETS] Tickets salvos no arquivo.');
+        const newTicket = new Ticket(ticketData);
+        await newTicket.save();
+        ticketsCache.set(newTicket.channelId, newTicket);
+        console.log(`[SISTEMA DE TICKETS] Ticket ${newTicket.channelId} salvo no banco de dados.`);
     } catch (error) {
-        console.error('[SISTEMA DE TICKETS] Erro ao salvar tickets no arquivo:', error);
+        console.error('[SISTEMA DE TICKETS] Erro ao salvar ticket no banco de dados:', error);
     }
 }
 
 /**
- * Gera o conteúdo HTML para a transcrição do ticket.
- * @param {object} ticketInfo - As informações do ticket, incluindo o histórico.
- * @param {Client} client - A instância do cliente Discord.
- * @param {string} closeReason - O motivo do fechamento.
- * @param {string} closerTag - A tag do membro que fechou o ticket.
- * @returns {string} O conteúdo HTML completo.
+ * Atualiza um ticket existente no banco de dados.
+ * @param {string} channelId - O ID do canal do ticket.
+ * @param {object} updateData - Os dados a serem atualizados.
  */
-async function generateTranscriptHtml(ticketInfo, client, closeReason, closerTag) {
-    const owner = await client.users.fetch(ticketInfo.ownerId).catch(() => null);
-    const ownerTag = owner ? owner.tag : 'Usuário Desconhecido';
+async function updateTicketInDatabase(channelId, updateData) {
+    try {
+        const updatedTicket = await Ticket.findOneAndUpdate({ channelId }, updateData, { new: true });
+        if (updatedTicket) {
+            ticketsCache.set(updatedTicket.channelId, updatedTicket);
+        }
+    } catch (error) {
+        console.error('[SISTEMA DE TICKETS] Erro ao atualizar ticket no banco de dados:', error);
+    }
+}
 
-    const messagesHtml = ticketInfo.transcript.map(msg => {
-        const date = new Date(msg.timestamp).toLocaleString('pt-BR');
-        const isBot = msg.author.endsWith(client.user.tag.slice(-5));
-        const messageClass = isBot ? 'message bot-message' : 'message user-message';
-        return `
-            <div class="${messageClass}">
-                <div class="author-name">${msg.author}</div>
-                <div class="message-content">${msg.content}</div>
-                <div class="timestamp">${date}</div>
-            </div>
-        `;
-    }).join('');
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Transcrição do Ticket - ${ownerTag}</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #36393f; color: #dcddde; margin: 0; padding: 20px; }
-            .container { max-width: 800px; margin: auto; background-color: #2f3136; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
-            .header { padding: 20px; border-bottom: 1px solid #202225; text-align: center; }
-            .header h1 { color: #fff; margin: 0 0 10px 0; }
-            .header p { color: #b9bbbe; margin: 0; }
-            .chat-box { padding: 20px; }
-            .message { padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid; position: relative; }
-            .user-message { border-left-color: #7289da; background-color: #40444b; }
-            .bot-message { border-left-color: #f7a62b; background-color: #3a3e43; }
-            .author-name { font-weight: bold; color: #fff; }
-            .timestamp { font-size: 10px; color: #72767d; position: absolute; top: 10px; right: 10px; }
-            .message-content { margin-top: 5px; word-wrap: break-word; white-space: pre-wrap; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>Transcrição do Ticket</h1>
-                <p><strong>Tipo:</strong> ${formatTicketType(ticketInfo.type)}</p>
-                <p><strong>Autor:</strong> ${ownerTag}</p>
-                <p><strong>ID do Ticket:</strong> ${ticketInfo.channelId}</p>
-                <p><strong>Fechado por:</strong> ${closerTag}</p>
-                ${closeReason ? `<p><strong>Motivo:</strong> ${closeReason}</p>` : ''}
-            </div>
-            <div class="chat-box">
-                ${messagesHtml}
-            </div>
-        </div>
-    </body>
-    </html>
-    `;
+/**
+ * Remove um ticket do banco de dados e do cache.
+ * @param {string} channelId - O ID do canal do ticket.
+ */
+async function deleteTicketFromDatabase(channelId) {
+    try {
+        await Ticket.deleteOne({ channelId });
+        ticketsCache.delete(channelId);
+        console.log(`[SISTEMA DE TICKETS] Ticket ${channelId} deletado do banco de dados.`);
+    } catch (error) {
+        console.error('[SISTEMA DE TICKETS] Erro ao deletar ticket do banco de dados:', error);
+    }
 }
 
 /**
@@ -205,8 +165,13 @@ async function closeTicket(channel, ticketInfo, closerMember, closeReason = null
     try {
         const owner = await client.users.fetch(ticketInfo.ownerId).catch(() => null);
         const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-
-        const transcriptContentHtml = await generateTranscriptHtml(ticketInfo, client, closeReason, closerMember.user.tag);
+        
+        // Transcreve o canal usando a nova biblioteca
+        const transcript = await discordTranscripts.createTranscript(channel, {
+            limit: -1, 
+            returnBuffer: false,
+            fileName: `transcript-${channel.id}.html`
+        });
 
         const transcriptEmbed = new EmbedBuilder()
             .setTitle(`<a:low_bot:1402749493551566899> TRANSCRIÇÃO DO TICKET: ${formatTicketType(ticketInfo.type)} - ${owner ? owner.username : 'Desconhecido'}`)
@@ -223,19 +188,19 @@ async function closeTicket(channel, ticketInfo, closerMember, closeReason = null
             .setThumbnail(client.user.displayAvatarURL());
 
         if (logChannel) {
-            await logChannel.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] }).catch(console.error);
+            await logChannel.send({ embeds: [transcriptEmbed], files: [transcript] }).catch(console.error);
         }
 
         if (owner) {
             try {
-                await owner.send({ embeds: [transcriptEmbed], files: [{ attachment: Buffer.from(transcriptContentHtml), name: `transcript-${channel.id}.html` }] });
+                await owner.send({ embeds: [transcriptEmbed], files: [transcript] });
             } catch (dmError) {
                 console.warn(`[SISTEMA DE TICKETS] Não foi possível enviar a DM para ${owner.tag}:`, dmError);
             }
         }
 
-        delete tickets[channel.id];
-        saveTickets();
+        // Deleta o ticket do banco de dados e do cache
+        await deleteTicketFromDatabase(channel.id);
         await channel.delete().catch(console.error);
     } catch (error) {
         console.error('[SISTEMA DE TICKETS] Erro ao fechar o ticket:', error);
@@ -257,8 +222,9 @@ function setup(client) {
     if (!client.options.partials.includes(Partials.User)) {
         client.options.partials.push(Partials.User);
     }
-
-    loadTickets();
+    
+    // Carrega os tickets do banco de dados ao iniciar
+    loadTicketsFromDatabase();
 
     client.once('ready', async () => {
         console.log(`[SISTEMA DE TICKETS] Iniciado para ${client.user.tag}!`);
@@ -339,7 +305,7 @@ function setup(client) {
                             ],
                         });
 
-                        tickets[ticketChannel.id] = {
+                        const newTicketData = {
                             channelId: ticketChannel.id,
                             ownerId: member.id,
                             type: ticketType,
@@ -347,7 +313,8 @@ function setup(client) {
                             createdAt: new Date().toISOString(),
                             transcript: []
                         };
-                        saveTickets();
+                        // Salva o novo ticket no banco de dados
+                        await saveTicketToDatabase(newTicketData);
 
                         const ticketEmbed = new EmbedBuilder()
                             .setTitle(`> <:azul:1403119768806096898> Ticket - ${formatTicketType(ticketType)}`)
@@ -381,14 +348,14 @@ function setup(client) {
                 } else if (interaction.customId === 'close_ticket_reason_modal') {
                     await interaction.deferUpdate();
                     const closeReason = interaction.fields.getTextInputValue('close_reason_input');
-                    const ticketInfo = tickets[interaction.channel.id];
+                    const ticketInfo = ticketsCache.get(interaction.channel.id);
                     if (!ticketInfo) {
                         return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
                     }
                     await closeTicket(interaction.channel, ticketInfo, interaction.member, closeReason, client);
                 } else if (interaction.customId === 'add_member_modal') {
                     await interaction.deferUpdate();
-                    const ticketInfo = tickets[interaction.channel.id];
+                    const ticketInfo = ticketsCache.get(interaction.channel.id);
                     if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
                         return interaction.followUp({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode adicionar membros.', ephemeral: true});
@@ -427,7 +394,7 @@ function setup(client) {
                     }
                 } else if (interaction.customId === 'remove_member_modal') {
                     await interaction.deferUpdate();
-                    const ticketInfo = tickets[interaction.channel.id];
+                    const ticketInfo = ticketsCache.get(interaction.channel.id);
                     if (!ticketInfo) return interaction.followUp({ content: 'O ticket não foi encontrado. Talvez já tenha sido fechado.', ephemeral: true });
                     if (!interaction.member.roles.cache.has(GESTAO_ROLE_ID)) {
                         return interaction.followUp({ content: '<:v_staff:1391511999338250256> Apenas a equipe <@&1354891875844100278> pode remover membros.', ephemeral: true });
@@ -470,9 +437,9 @@ function setup(client) {
             }
         }
 
-        if (interaction.isButton() && tickets[interaction.channel.id]) {
+        if (interaction.isButton() && ticketsCache.has(interaction.channel.id)) {
             const { customId, channel, member } = interaction;
-            const ticketInfo = tickets[channel.id];
+            const ticketInfo = ticketsCache.get(channel.id);
 
             if (!ticketInfo) {
                 if (!interaction.replied && !interaction.deferred) {
@@ -650,15 +617,10 @@ function setup(client) {
     });
 
     client.on('messageCreate', async message => {
-        if (message.author.bot) return;
-        if (tickets[message.channel.id]) {
-            tickets[message.channel.id].transcript.push({
-                author: message.author.tag,
-                content: message.content,
-                timestamp: message.createdTimestamp
-            });
-            saveTickets();
-        }
+        // A lógica de salvar a transcrição mensagem por mensagem no banco de dados
+        // foi removida, pois a nova biblioteca busca as mensagens diretamente do canal.
+        // Portanto, essa parte do código agora não faz nada, mas foi mantida
+        // para não alterar a estrutura da função, como solicitado.
     });
 }
 
