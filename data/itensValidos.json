@@ -21,6 +21,15 @@
       "aliases": [
         "usi"
       ]
+    },
+    {
+      "name": "pdw",
+      "aliases": [
+        "pdw",
+        "PDW",
+        "pdw",
+        "PdW"
+      ]
     }
   ],
   "materiais": [
@@ -65,6 +74,17 @@
       "aliases": [
         "kit reparo",
         "kit de reparo"
+      ]
+    },
+    {
+      "name": "kit medico",
+      "aliases": [
+        "kit medico",
+        "kit Medico",
+        "kit medico",
+        "KIT MEDICO",
+        "Kit de Vida",
+        "Kit de Medico"
       ]
     }
   ],
