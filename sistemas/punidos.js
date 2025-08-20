@@ -16,16 +16,16 @@ const connectToDatabase = require('../database');
 const Punishment = require('../models/Punishment');
 
 // --- Configurações de Canais e IDs de Cargos ---
-const PUNISHED_CHANNEL_ID = '1403593194545086484'; // Canal da mensagem fixa do sistema de punições (botões)
-const PUNISHED_LOG_CHANNEL_ID = '1354897156133097572'; // Canal para onde as embeds de punição/remoção serão enviadas
-const BOT_LOG_CHANNEL_ID = '1403603952234397728'; // Canal para logs de punições expiradas/removidas simplificados
+const PUNISHED_CHANNEL_ID = '1403593194545086484';
+const PUNISHED_LOG_CHANNEL_ID = '1354897156133097572';
+const BOT_LOG_CHANNEL_ID = '1403603952234397728';
 
 // IDs dos cargos de punição
 const ROLES = {
-    LEVE: '1354891761046126884', // 7 dias
-    MEDIA: '1354891870093709423', // 14 dias
-    GRAVE: '1354891873902264530', // 30 dias
-    EXONERACAO: '1403593461021544670', // Exoneração/PD
+    LEVE: '1354891761046126884',
+    MEDIA: '1354891870093709423',
+    GRAVE: '1354891873902264530',
+    EXONERACAO: '1403593461021544670',
 };
 
 // ID do cargo responsável por usar o painel de punições
@@ -426,9 +426,134 @@ module.exports = (client) => {
         // Inicia a verificação de punições expiradas
         setInterval(() => checkExpiredPunishments(client), 10 * 60 * 1000); // Roda a cada 10 minutos
         console.log('[PUNIDOS] Verificador de punições expiradas iniciado.');
+
+        const punicoesCommand = new SlashCommandBuilder()
+            .setName('punicoes')
+            .setDescription('Mostra a lista de todas as punições ativas no servidor.')
+            .addBooleanOption(option =>
+                option.setName('com_ids')
+                    .setDescription('Mostra a lista completa com IDs para remoção.')
+                    .setRequired(false));
+
+        const removePunishmentCommand = new SlashCommandBuilder()
+            .setName('removerpunicao')
+            .setDescription('Remove uma punição ativa por ID.')
+            .addStringOption(option =>
+                option.setName('id_punicao')
+                    .setDescription('O ID da punição a ser removida.')
+                    .setRequired(true));
+
+        client.application.commands.create(punicoesCommand).then(() => {
+            console.log('Comando /punicoes registrado.');
+        }).catch(e => {
+            console.error('Erro ao registrar comando /punicoes:', e);
+        });
+
+        client.application.commands.create(removePunishmentCommand).then(() => {
+            console.log('Comando /removerpunicao registrado.');
+        }).catch(e => {
+            console.error('Erro ao registrar comando /removerpunicao:', e);
+        });
     });
 
     client.on('interactionCreate', async (interaction) => {
+        if (interaction.isChatInputCommand() && interaction.commandName === 'removerpunicao') {
+            await interaction.deferReply({ ephemeral: true });
+            const punishmentIdToRemove = interaction.options.getString('id_punicao');
+            
+            const removedPunishment = await Punishment.findByIdAndDelete(punishmentIdToRemove);
+
+            if (!removedPunishment) {
+                await interaction.editReply({ content: '<:Negativo:1403204560058585138> Punição não encontrada ou já removida.' });
+                return;
+            }
+
+            const member = await interaction.guild.members.fetch(removedPunishment.memberId).catch(() => null);
+            if (member && member.roles.cache.has(removedPunishment.roleId)) {
+                try {
+                    await member.roles.remove(removedPunishment.roleId, 'Punição removida manualmente via comando.');
+                    await interaction.editReply({ content: `<:Positivo:1403203942573150362> Cargo de punição removido de <@${member.id}>.` });
+                } catch (roleRemoveError) {
+                    console.error('Erro ao remover cargo de punição:', roleRemoveError);
+                    await interaction.editReply({ content: '<:remover:1403214664946417664> Punição removida do registro, mas houve um erro ao remover o cargo do membro. Verifique as permissões do bot.' });
+                }
+            } else if (member) {
+                await interaction.editReply({ content: `<:adicionar:1403214675872579725> Punição removida do registro, mas o membro não possui mais o cargo de punição.` });
+            } else {
+                await interaction.editReply({ content: `<:adicionar:1403214675872579725> Punição removida do registro. Membro não encontrado no servidor.` });
+            }
+
+            const logChannel = await interaction.client.channels.fetch(PUNISHED_LOG_CHANNEL_ID);
+            const simplifiedLogChannel = await interaction.client.channels.fetch(BOT_LOG_CHANNEL_ID);
+
+            if (removedPunishment.logMessageId) {
+                if (logChannel && logChannel.isTextBased()) {
+                    try {
+                        const logMessage = await logChannel.messages.fetch(removedPunishment.logMessageId);
+                        if (logMessage) {
+                            const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
+                            await logMessage.edit({ embeds: [updatedLogEmbed] });
+                        }
+                    } catch (logEditError) {
+                        console.error('Erro ao editar embed de log da punição removida:', logEditError);
+                    }
+                }
+            }
+            if (simplifiedLogChannel && simplifiedLogChannel.isTextBased()) {
+                const simplifiedLogMessage = createSimplifiedRemovedLogMessage(removedPunishment, interaction.user);
+                await simplifiedLogChannel.send({ content: simplifiedLogMessage }).catch(console.error);
+            }
+            return;
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'punicoes') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const activePunishments = await Punishment.find({ punishmentType: { $ne: 'exoneração' } });
+            if (activePunishments.length === 0) {
+                await interaction.editReply('Não há punições ativas no momento.');
+                return;
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('Lista de Punições Ativas')
+                .setColor('#FFA500');
+
+            let descriptionText = '';
+            for (const p of activePunishments) {
+                const punishmentName = PUNISHMENT_TYPES[p.punishmentType]?.name || p.punishmentType;
+                const expiresAtText = p.expiresAt ? `<t:${Math.floor(p.expiresAt / 1000)}:R>` : 'Permanente';
+                const member = await interaction.guild.members.fetch(p.memberId).catch(() => null);
+                const memberName = member ? member.displayName : p.memberName;
+                descriptionText += `**${memberName}** - \`${punishmentName}\`\n\`ID:\` \`${p._id.toString()}\`\n\`Expira:\` ${expiresAtText}\n\n`;
+            }
+
+            const chunks = [];
+            while (descriptionText.length > 0) {
+                let chunk = descriptionText.substring(0, 4000);
+                let lastNewline = chunk.lastIndexOf('\n');
+                if (lastNewline !== -1 && lastNewline !== chunk.length - 1) {
+                    chunk = chunk.substring(0, lastNewline + 1);
+                }
+                chunks.push(chunk);
+                descriptionText = descriptionText.substring(chunk.length);
+            }
+
+            await interaction.editReply({
+                embeds: [embed.setDescription(chunks[0])]
+            });
+
+            if (chunks.length > 1) {
+                for (let i = 1; i < chunks.length; i++) {
+                    const followUpEmbed = new EmbedBuilder()
+                        .setDescription(chunks[i])
+                        .setColor('#FFA500');
+                    await interaction.followUp({ embeds: [followUpEmbed], ephemeral: true });
+                }
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand() && interaction.customId && !interaction.customId.startsWith('punish_')) {
             return;
         }
@@ -442,7 +567,7 @@ module.exports = (client) => {
             }
         }
 
-        if (interaction.isStringSelectMenu() && interaction.customId === 'punish_remove_select') {
+        if (interaction.isStringSelectMenu() && interaction.customId.startsWith('punish_remove_select')) {
             if (!interaction.member.roles.cache.has(RESPONSIBLE_ROLE_ID)) {
                 return interaction.reply({
                     content: `<:ban:1403120687329181698> Painel permitido apenas para <@&${RESPONSIBLE_ROLE_ID}>!!!`,
@@ -490,34 +615,128 @@ module.exports = (client) => {
             if (interaction.customId === 'punish_remove') {
                 await interaction.deferReply({ ephemeral: true });
 
+                await checkExpiredPunishments(interaction.client);
                 const removablePunishments = await Punishment.find({ punishmentType: { $ne: 'exoneração' } });
 
                 if (removablePunishments.length === 0) {
-                    await interaction.editReply({ content: 'Não há punições removíveis ativas no momento (Punições de Exoneração não podem ser removidas por este painel).' });
+                    await interaction.editReply({ content: 'Não há punições removíveis ativas no momento.' });
                     return;
                 }
+                
+                const rows = [];
+                const chunkSize = 25;
+                const maxRows = 5;
+                const numMenus = Math.min(Math.ceil(removablePunishments.length / chunkSize), maxRows);
+                
+                for (let i = 0; i < numMenus; i++) {
+                    const chunk = removablePunishments.slice(i * chunkSize, (i + 1) * chunkSize);
+                    const options = chunk.map((p) => ({
+                        label: `${p.memberName} (${PUNISHMENT_TYPES[p.punishmentType]?.name || p.punishmentType})`,
+                        description: `Motivo: ${p.reason.slice(0, 50)}...`,
+                        value: p._id.toString(),
+                    }));
+                    
+                    const selectMenu = new StringSelectMenuBuilder()
+                        .setCustomId(`punish_remove_select_${i}`)
+                        .setPlaceholder(`Remover Punição (Parte ${i + 1}/${numMenus})`)
+                        .addOptions(options);
 
-                const selectMenu = new StringSelectMenuBuilder()
-                    .setCustomId('punish_remove_select')
-                    .setPlaceholder('Selecione uma punição para remover')
-                    .addOptions(
-                        removablePunishments.map((p) => ({
-                            label: `${p.memberName} (${PUNISHMENT_TYPES[p.punishmentType]?.name || p.punishmentType})`,
-                            description: `Motivo: ${p.reason.slice(0, 50)}...`,
-                            value: p._id.toString(),
-                        }))
-                    );
+                    rows.push(new ActionRowBuilder().addComponents(selectMenu));
+                }
 
-                const row = new ActionRowBuilder().addComponents(selectMenu);
-                await interaction.editReply({
-                    content: 'Selecione a punição que deseja remover (Punições de Exoneração não aparecem aqui):',
-                    components: [row],
-                });
+                // If more than 5 menus are needed, add a button to remove by ID
+                if (removablePunishments.length > chunkSize * maxRows) {
+                    const removeByIdButton = new ButtonBuilder()
+                        .setCustomId('punish_remove_by_id')
+                        .setLabel('Remover por ID')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🆔');
+                    
+                    rows.push(new ActionRowBuilder().addComponents(removeByIdButton));
+                    
+                    await interaction.editReply({
+                        content: `Há mais de ${chunkSize * maxRows} punições ativas. Abaixo estão os ${chunkSize * maxRows} mais recentes. Use o botão "Remover por ID" para as demais, ou o comando \`/punicoes\` para a lista completa.`,
+                        components: rows,
+                    });
+                } else {
+                    await interaction.editReply({
+                        content: 'Selecione a punição que deseja remover:',
+                        components: rows,
+                    });
+                }
+
+                return;
+            }
+            
+            if (interaction.customId === 'punish_remove_by_id') {
+                const modal = new ModalBuilder()
+                    .setCustomId('punish_remove_modal')
+                    .setTitle('Remover Punição por ID');
+
+                const punishmentIdInput = new TextInputBuilder()
+                    .setCustomId('punish_id')
+                    .setLabel('ID da Punição')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Cole o ID da punição que você quer remover aqui.')
+                    .setRequired(true);
+
+                modal.addComponents(new ActionRowBuilder().addComponents(punishmentIdInput));
+                await interaction.showModal(modal);
                 return;
             }
         }
-
+        
         if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'punish_remove_modal') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const punishmentIdToRemove = interaction.fields.getTextInputValue('punish_id');
+
+                const removedPunishment = await Punishment.findByIdAndDelete(punishmentIdToRemove);
+
+                if (!removedPunishment) {
+                    await interaction.editReply({ content: '<:Negativo:1403204560058585138> Punição não encontrada ou já removida.' });
+                    return;
+                }
+
+                const member = await interaction.guild.members.fetch(removedPunishment.memberId).catch(() => null);
+                if (member && member.roles.cache.has(removedPunishment.roleId)) {
+                    try {
+                        await member.roles.remove(removedPunishment.roleId, 'Punição removida manualmente.');
+                        await interaction.editReply({ content: `<:Positivo:1403203942573150362> Cargo de punição removido de <@${member.id}>.` });
+                    } catch (roleRemoveError) {
+                        console.error('Erro ao remover cargo de punição:', roleRemoveError);
+                        await interaction.editReply({ content: '<:remover:1403214664946417664> Punição removida do registro, mas houve um erro ao remover o cargo do membro. Verifique as permissões do bot.' });
+                    }
+                } else if (member) {
+                    await interaction.editReply({ content: `<:adicionar:1403214675872579725> Punição removida do registro, mas o membro não possui mais o cargo de punição.` });
+                } else {
+                    await interaction.editReply({ content: `<:adicionar:1403214675872579725> Punição removida do registro. Membro não encontrado no servidor.` });
+                }
+
+                const logChannel = await interaction.client.channels.fetch(PUNISHED_LOG_CHANNEL_ID);
+                const simplifiedLogChannel = await interaction.client.channels.fetch(BOT_LOG_CHANNEL_ID);
+
+                if (removedPunishment.logMessageId) {
+                    if (logChannel && logChannel.isTextBased()) {
+                        try {
+                            const logMessage = await logChannel.messages.fetch(removedPunishment.logMessageId);
+                            if (logMessage) {
+                                const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
+                                await logMessage.edit({ embeds: [updatedLogEmbed] });
+                            }
+                        } catch (logEditError) {
+                            console.error('Erro ao editar embed de log da punição removida:', logEditError);
+                        }
+                    }
+                }
+                if (simplifiedLogChannel && simplifiedLogChannel.isTextBased()) {
+                    const simplifiedLogMessage = createSimplifiedRemovedLogMessage(removedPunishment, interaction.user);
+                    await simplifiedLogChannel.send({ content: simplifiedLogMessage }).catch(console.error);
+                }
+                return;
+            }
+
             if (interaction.customId === 'punish_apply_modal') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -615,7 +834,7 @@ module.exports = (client) => {
                 return;
             }
         }
-
+        
         if (interaction.isStringSelectMenu()) {
             await interaction.deferUpdate();
 
