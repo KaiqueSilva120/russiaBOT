@@ -27,6 +27,7 @@ function formatTicketType(type) {
     if (type === 'bugs') return 'Bugs';
     if (type === 'patrocinio') return 'Patrocinio';
     if (type === 'denuncia') return 'Denuncia';
+    if (type === 'recompensa') return 'Receber Recompensa'; // Adicionado
     return type.split('-')
                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                .join(' ');
@@ -143,6 +144,12 @@ async function sendAtendimentoMessage(channel, client) {
                 description: 'Denuncie e reporte membros da Org',
                 value: 'denuncia',
                 emoji: { id: '1403120687329181698' }
+            },
+            {
+                label: 'Receber Recompensa', // Adicionado
+                description: 'Reinvindique sua recompensa de booster/sorteios/eventos.', // Adicionado
+                value: 'recompensa', // Adicionado
+                emoji: { id: '1407931222264516663' } // Adicionado
             }
         ]);
 
@@ -617,10 +624,7 @@ function setup(client) {
     });
 
     client.on('messageCreate', async message => {
-        // A lógica de salvar a transcrição mensagem por mensagem no banco de dados
-        // foi removida, pois a nova biblioteca busca as mensagens diretamente do canal.
-        // Portanto, essa parte do código agora não faz nada, mas foi mantida
-        // para não alterar a estrutura da função, como solicitado.
+
     });
 }
 
