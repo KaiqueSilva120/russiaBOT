@@ -377,6 +377,7 @@ async function checkExpiredPunishments(client) {
                     console.log(`[PUNIDOS] Cargo de punição ${punishment.roleId} removido de ${member.user.tag}.`);
                     if (logChannel) {
                         const logEmbed = createPunishmentExpiredLogEmbed(punishment);
+                        const mention = `||<@${punishment.memberId}>||`;
                         await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
                     }
                     if (simplifiedLogChannel) {
@@ -599,6 +600,7 @@ module.exports = (client) => {
                             const logMessage = await logChannel.messages.fetch(removedPunishment.logMessageId);
                             if (logMessage) {
                                 const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
+                                const mention = `||<@${removedPunishment.memberId}>||`;
                                 await logMessage.edit({ embeds: [updatedLogEmbed] });
                             }
                         } catch (logEditError) {
@@ -671,6 +673,7 @@ module.exports = (client) => {
                 if (logChannel && logChannel.isTextBased()) {
                     const logEmbed = createPunishmentLogEmbed(newPunishment, member);
                     try {
+                        const mention = `||<@${member.id}>||`;
                         const sentLogMessage = await logChannel.send({ embeds: [logEmbed] });
                         newPunishment.logMessageId = sentLogMessage.id;
                         await newPunishment.save();
@@ -751,6 +754,7 @@ module.exports = (client) => {
                         const logMessage = await logChannel.messages.fetch(removedPunishment.logMessageId);
                         if (logMessage) {
                             const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
+                            const mention = `||<@${removedPunishment.memberId}>||`;
                             await logMessage.edit({ embeds: [updatedLogEmbed] });
                         }
                     } catch (logEditError) {
