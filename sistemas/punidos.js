@@ -33,8 +33,8 @@ const RESPONSIBLE_ROLE_ID = '1354892110113018111';
 
 // Mapeamento de texto para IDs de cargos e dias
 const PUNISHMENT_TYPES = {
-    'leve': { roleId: ROLES.LEVE, days: 7, name: 'Advertência Leve' },
-    'media': { roleId: ROLES.MEDIA, days: 14, name: 'Advertência Média' },
+    'leve': { roleId: ROLES.LEVE, days: 30, name: 'Advertência Leve' },
+    'media': { roleId: ROLES.MEDIA, days: 30, name: 'Advertência Média' },
     'grave': { roleId: ROLES.GRAVE, days: 30, name: 'Advertência Grave' },
     'exoneração': { roleId: ROLES.EXONERACAO, days: 0, name: 'Exoneração/PD', unremovable: true },
 };
@@ -92,8 +92,8 @@ function createMainPunishmentEmbed() {
         .setTitle('<a:warning:1392879344262844437> SISTEMA DE PUNIÇÕES DA RUSSIA')
         .setDescription(
             `> <:ponto:1404150420883898510> Abaixo temos o sistema de punições da rússia e suas respectivas punições abaixo:\n` +
-            `> <@&${ROLES.LEVE}> - **7 dias**\n` +
-            `> <@&${ROLES.MEDIA}> - **14 dias**\n` +
+            `> <@&${ROLES.LEVE}> - **30 dias**\n` +
+            `> <@&${ROLES.MEDIA}> - **30 dias**\n` +
             `> <@&${ROLES.GRAVE}> - **30 dias**\n` +
             `> <@&${ROLES.EXONERACAO}> - **Exoneração/PD**\n\n` +
             `> Ao selecionar **Exoneração** o mesmo será expulso automaticamente da organização.\n`
@@ -378,7 +378,7 @@ async function checkExpiredPunishments(client) {
                     if (logChannel) {
                         const logEmbed = createPunishmentExpiredLogEmbed(punishment);
                         const mention = `||<@${punishment.memberId}>||`;
-                        await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
+                        await logChannel.send({ content: mention, embeds: [logEmbed] }).catch(console.error);
                     }
                     if (simplifiedLogChannel) {
                         const simplifiedLogMessage = createSimplifiedExpiredLogMessage(punishment);
@@ -404,7 +404,8 @@ async function checkExpiredPunishments(client) {
                             { name: 'Motivo:', value: punishment.reason },
                             { name: 'Punição:', value: `<@&${punishment.roleId}>`, inline: true }
                         );
-                    await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
+                    const mention = `||<@${punishment.memberId}>||`;
+                    await logChannel.send({ content: mention, embeds: [logEmbed] }).catch(console.error);
                 }
                 if (simplifiedLogChannel) {
                     const simplifiedLogMessage = createSimplifiedExpiredLogMessage(punishment);
@@ -601,7 +602,7 @@ module.exports = (client) => {
                             if (logMessage) {
                                 const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
                                 const mention = `||<@${removedPunishment.memberId}>||`;
-                                await logMessage.edit({ embeds: [updatedLogEmbed] });
+                                await logMessage.edit({ content: mention, embeds: [updatedLogEmbed] });
                             }
                         } catch (logEditError) {
                             console.error('Erro ao editar embed de log da punição removida:', logEditError);
@@ -674,7 +675,7 @@ module.exports = (client) => {
                     const logEmbed = createPunishmentLogEmbed(newPunishment, member);
                     try {
                         const mention = `||<@${member.id}>||`;
-                        const sentLogMessage = await logChannel.send({ embeds: [logEmbed] });
+                        const sentLogMessage = await logChannel.send({ content: mention, embeds: [logEmbed] });
                         newPunishment.logMessageId = sentLogMessage.id;
                         await newPunishment.save();
 
@@ -755,7 +756,7 @@ module.exports = (client) => {
                         if (logMessage) {
                             const updatedLogEmbed = createPunishmentRemovedLogEmbed(removedPunishment);
                             const mention = `||<@${removedPunishment.memberId}>||`;
-                            await logMessage.edit({ embeds: [updatedLogEmbed] });
+                            await logMessage.edit({ content: mention, embeds: [updatedLogEmbed] });
                         }
                     } catch (logEditError) {
                         console.error('Erro ao editar embed de log da punição removida:', logEditError);
