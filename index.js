@@ -10,11 +10,13 @@ server.all('/', (req, res) => {
   res.send('Seu bot está online!');
 });
 function keepAlive() {
-  server.listen(3000, () => {
-    console.log('Servidor ativo!');
+  const port = process.env.PORT || 3000; // pega a porta da Koyeb ou usa 3000 local
+  server.listen(port, () => {
+    console.log(`Servidor ativo na porta ${port}!`);
   });
 }
 keepAlive();
+
 
 
 const client = new Client({
